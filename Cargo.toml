@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.9.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Pseudo Nymm", "Zest contributors"]
+repository = "https://github.com/SkippyNet/zest"
+homepage = "https://skippynet.github.io/zest/"
+
+[workspace.dependencies]
+# Internal crates
+zest-core = { path = "crates/core" }
+zest-cleaner = { path = "crates/cleaner" }
+zest-registry = { path = "crates/registry" }
+zest-disk = { path = "crates/disk" }
+zest-system = { path = "crates/system" }
+zest-updates = { path = "crates/updates" }
+zest-performance = { path = "crates/performance" }
+zest-backup = { path = "crates/backup" }
+zest-tweaks = { path = "crates/tweaks" }
+zest-hardware = { path = "crates/hardware" }
+zest-engine = { path = "crates/engine" }
+
+# Shared third-party crates (pin once, use everywhere)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = { version = "0.4", features = ["std"] }
+rayon = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+winreg = "0.56"
+windows = "0.62"
+blake3 = "1"
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+# Optimised dependencies keep the debug GUI smooth without slowing our own rebuilds.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+debug = false

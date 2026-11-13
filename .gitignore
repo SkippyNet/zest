@@ -1,0 +1,19 @@
+# Build output
+/target/
+**/target/
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Local tooling
+.claude/
+
+# Local run artifacts
+*.log
+/dist/
+/screenshots-tmp/

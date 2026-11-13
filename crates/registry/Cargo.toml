@@ -1,0 +1,21 @@
+[package]
+name = "zest-registry"
+description = "Registry cleaner for Zest: finds and safely removes invalid registry entries."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+zest-core.workspace = true
+serde.workspace = true
+log.workspace = true
+rayon.workspace = true
+winreg.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

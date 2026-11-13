@@ -1,0 +1,296 @@
+//! The analysis pass: works out exactly what a clean would remove.
+//!
+//! Scanning never modifies anything. Its result is the precise list of
+//! files, registry entries and operations that [`crate::clean`] will act on,
+//! so what the user reviews is what gets removed.
+
+use crate::model::{
+    Action, Catalog, CleanOptions, Finding, Group, Rule, RuleResult, ScanReport, Target,
+};
+use crate::pattern::NamePattern;
+use crate::special::{self, RunContext};
+use rayon::prelude::*;
+use std::fs::Metadata;
+use std::path::Path;
+use std::time::{Duration, Instant, SystemTime};
+use zest_core::walk::{self, EntryKind};
+use zest_core::{Progress, safety};
+
+/// Analyses every enabled rule of `catalog`.
+///
+/// Rules run in parallel. Cancelling through `progress` returns the results
+/// gathered so far.
+pub fn scan(catalog: &Catalog, opts: &CleanOptions, progress: &Progress) -> ScanReport {
+    let started = Instant::now();
+    let ctx = RunContext::new(opts);
+    let jobs: Vec<(&Group, &Rule)> = catalog
+        .rules()
+        .filter(|(_, rule)| opts.enabled.contains(&rule.id))
+        .collect();
+    progress.set_total(jobs.len() as u64);
+
+    let results: Vec<RuleResult> = jobs
+        .par_iter()
+        .filter_map(|(group, rule)| {
+            if progress.is_cancelled() {
+                return None;
+            }
+            progress.set_message(format!("{} – {}", group.name, rule.name));
+            let result = scan_rule(group, rule, &ctx, progress);
+            progress.inc(1);
+            progress.add_bytes(result.bytes);
+            (!result.is_empty()).then_some(result)
+        })
+        .collect();
+
+    let mut report = ScanReport {
+        bytes: results.iter().map(|r| r.bytes).sum(),
+        items: results.iter().map(|r| r.items).sum(),
+        results,
+        elapsed: started.elapsed(),
+    };
+    // Restore catalog order (parallel collection keeps it, but be explicit:
+    // the UI relies on it).
+    let order: Vec<&str> = catalog.rules().map(|(_, r)| r.id.as_str()).collect();
+    report.results.sort_by_key(|r| {
+        order
+            .iter()
+            .position(|id| *id == r.rule_id)
+            .unwrap_or(usize::MAX)
+    });
+    report
+}
+
+/// Display name of the program that blocks `group`, if one is running.
+pub(crate) fn blocker(group: &Group, ctx: &RunContext) -> Option<String> {
+    group
+        .processes
+        .iter()
+        .any(|p| ctx.running.contains(&p.to_lowercase()))
+        .then(|| format!("{} is running", group.name))
+}
+
+fn scan_rule(group: &Group, rule: &Rule, ctx: &RunContext, progress: &Progress) -> RuleResult {
+    let mut result = RuleResult {
+        rule_id: rule.id.clone(),
+        group_id: group.id.clone(),
+        // When the caller chose to ignore running programs, nothing is blocked.
+        blocked_by: if ctx.opts.ignore_running {
+            None
+        } else {
+            blocker(group, ctx)
+        },
+        needs_admin: rule.requires_admin && !ctx.elevated,
+        ..Default::default()
+    };
+    for action in &rule.actions {
+        if progress.is_cancelled() {
+            break;
+        }
+        scan_action(action, rule, ctx, progress, &mut result);
+    }
+    result
+}
+
+fn scan_action(
+    action: &Action,
+    rule: &Rule,
+    ctx: &RunContext,
+    progress: &Progress,
+    out: &mut RuleResult,
+) {
+    match action {
+        Action::Files {
+            dir,
+            pattern,
+            recursive,
+            min_age_days,
+        } => {
+            let mut min_age = Duration::from_secs(u64::from(*min_age_days) * 86_400);
+            if rule.age_filtered {
+                min_age = min_age.max(Duration::from_secs(
+                    u64::from(ctx.opts.min_age_hours) * 3600,
+                ));
+            }
+            scan_files(
+                dir,
+                &NamePattern::new(pattern),
+                *recursive,
+                min_age,
+                ctx,
+                progress,
+                out,
+            );
+        }
+        Action::File(path) => {
+            if let Ok(meta) = std::fs::symlink_metadata(path)
+                && !meta.is_dir()
+                && allowed(path, ctx)
+            {
+                out.push(Finding::file(path.clone(), entry_size(&meta)));
+            }
+        }
+        Action::Folder(path) => scan_folder(path, ctx, progress, out),
+        Action::RegValues {
+            key,
+            include_subkeys,
+        } => {
+            if ctx.excluder.excludes_key(key) {
+                return;
+            }
+            let Ok(opened) = key.open() else {
+                return;
+            };
+            for (name, _) in opened.enum_values().flatten() {
+                out.push(Finding {
+                    target: Target::RegValue {
+                        key: key.clone(),
+                        name,
+                    },
+                    size: 0,
+                    items: 1,
+                    note: None,
+                });
+            }
+            if *include_subkeys {
+                for sub in opened.enum_keys().flatten() {
+                    let child = key.child(&sub);
+                    if !ctx.excluder.excludes_key(&child) {
+                        out.push(Finding {
+                            target: Target::RegKey(child),
+                            size: 0,
+                            items: 1,
+                            note: None,
+                        });
+                    }
+                }
+            }
+        }
+        Action::RegValue { key, name } => {
+            if !ctx.excluder.excludes_key(key)
+                && key.open().is_ok_and(|k| k.get_raw_value(name).is_ok())
+            {
+                out.push(Finding {
+                    target: Target::RegValue {
+                        key: key.clone(),
+                        name: name.clone(),
+                    },
+                    size: 0,
+                    items: 1,
+                    note: None,
+                });
+            }
+        }
+        Action::RegKey(key) => {
+            if !ctx.excluder.excludes_key(key) && key.exists() {
+                out.push(Finding {
+                    target: Target::RegKey(key.clone()),
+                    size: 0,
+                    items: 1,
+                    note: None,
+                });
+            }
+        }
+        Action::Special(special) => special::scan(special, ctx, out),
+    }
+}
+
+fn allowed(path: &Path, ctx: &RunContext) -> bool {
+    !ctx.excluder.excludes_path(path) && !safety::is_protected(path)
+}
+
+/// Logical size of a file; links take no space of their own.
+fn entry_size(meta: &Metadata) -> u64 {
+    if walk::is_link(meta) { 0 } else { meta.len() }
+}
+
+fn old_enough(meta: &Metadata, min_age: Duration, now: SystemTime) -> bool {
+    if min_age.is_zero() {
+        return true;
+    }
+    match meta.modified() {
+        Ok(modified) => now.duration_since(modified).is_ok_and(|age| age >= min_age),
+        // Without a timestamp we cannot prove the file is old: leave it.
+        Err(_) => false,
+    }
+}
+
+fn scan_files(
+    dir: &Path,
+    pattern: &NamePattern,
+    recursive: bool,
+    min_age: Duration,
+    ctx: &RunContext,
+    progress: &Progress,
+    out: &mut RuleResult,
+) {
+    // The folder itself must be a real folder: never descend through a link.
+    match std::fs::symlink_metadata(dir) {
+        Ok(meta) if meta.is_dir() && !walk::is_link(&meta) => {}
+        _ => return,
+    }
+    if ctx.excluder.excludes_path(dir) {
+        return;
+    }
+    let mut consider = |path: &Path, meta: &Metadata| {
+        let matches = pattern.matches_all()
+            || path
+                .file_name()
+                .is_some_and(|name| pattern.matches(&name.to_string_lossy()));
+        if matches && old_enough(meta, min_age, ctx.now) && allowed(path, ctx) {
+            out.push(Finding::file(path.to_path_buf(), entry_size(meta)));
+        }
+    };
+
+    if recursive {
+        walk::walk_tree(dir, Some(progress), &mut |path, meta, kind| {
+            if kind != EntryKind::Dir {
+                consider(path, meta);
+            }
+        });
+        if !out.prune_roots.iter().any(|p| p == dir) {
+            out.prune_roots.push(dir.to_path_buf());
+        }
+    } else if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata()
+                && (!meta.is_dir() || walk::is_link(&meta))
+            {
+                consider(&entry.path(), &meta);
+            }
+        }
+    }
+}
+
+fn scan_folder(path: &Path, ctx: &RunContext, progress: &Progress, out: &mut RuleResult) {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if !allowed(path, ctx) {
+        return;
+    }
+    if !meta.is_dir() || walk::is_link(&meta) {
+        out.push(Finding::file(path.to_path_buf(), entry_size(&meta)));
+        return;
+    }
+    if ctx.excluder.touches_dir(path) {
+        // Something inside is excluded: fall back to file-by-file cleaning.
+        scan_files(
+            path,
+            &NamePattern::new("*"),
+            true,
+            Duration::ZERO,
+            ctx,
+            progress,
+            out,
+        );
+        return;
+    }
+    let size = walk::tree_size(path, Some(progress));
+    out.push(Finding {
+        target: Target::Dir(path.to_path_buf()),
+        size: size.bytes,
+        items: size.files.max(1),
+        note: None,
+    });
+}

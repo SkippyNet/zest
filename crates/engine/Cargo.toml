@@ -1,0 +1,30 @@
+[package]
+name = "zest-engine"
+description = "Application layer of Zest: settings, history, health check, scheduling and smart cleaning."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+zest-core.workspace = true
+zest-cleaner.workspace = true
+zest-registry.workspace = true
+zest-performance.workspace = true
+zest-disk.workspace = true
+zest-updates.workspace = true
+zest-system.workspace = true
+zest-backup.workspace = true
+zest-tweaks.workspace = true
+zest-hardware.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
