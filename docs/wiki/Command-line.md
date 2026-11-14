@@ -18,6 +18,7 @@ with code 1 and a message on standard error.
 | `zest-cli analyze` | What a clean would remove with your selection. `--all` analyzes every rule |
 | `zest-cli rules` | Every cleaning rule and whether it is selected |
 | `zest-cli registry scan` | Invalid registry entries |
+| `zest-cli tools list` | Windows' own repair and maintenance tools |
 | `zest-cli startup list` | Startup apps, scheduled tasks, services, context-menu entries |
 | `zest-cli apps list` | Installed programs |
 | `zest-cli updates list` | Programs with updates waiting |
@@ -39,6 +40,22 @@ zest-cli clean --dry-run     show what would be removed; removes nothing
 zest-cli clean               ask, then clean
 zest-cli clean --yes         clean without asking (for scripts and schedules)
 ```
+
+### Registry, privacy and Windows tools
+
+Each of these saves a `.reg` backup before it changes the registry and asks first unless you add
+`--yes`.
+
+```text
+zest-cli registry fix [--yes]                 remove what `registry scan` finds
+zest-cli privacy apply --recommended [--yes]  switch the recommended settings to private
+zest-cli privacy apply <id>... [--yes]        switch named settings (ids from `privacy list`)
+zest-cli privacy revert --all [--yes]         back to the Windows defaults
+zest-cli privacy revert <id>... [--yes]
+zest-cli tools run <id> [--yes]               run one tool and print what it reports
+```
+
+Tools that open a window (Event Viewer, Services, ...) are started from the app, not from here.
 
 ### Back up
 
@@ -90,7 +107,8 @@ zest-cli backup verify --dest E:\
 List programs with updates as a table:
 
 ```powershell
-zest-cli updates list --json | ConvertFrom-Json | Format-Table
+(zest-cli updates list --json | ConvertFrom-Json).updates |
+    Format-Table name, installed_version, available_version
 ```
 
 ## Using other settings

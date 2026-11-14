@@ -49,6 +49,8 @@ pub struct App {
     page: Page,
     toasts: Toasts,
     elevated: bool,
+    /// The account signed in to Windows, when Zest runs as another one.
+    desktop_account: Option<String>,
     updater: Updater,
     theme_override: Option<zest_engine::settings::Theme>,
     save_at: Option<Instant>,
@@ -102,12 +104,18 @@ impl App {
             None => launch.page.unwrap_or(Page::Health),
         };
         let demo = launch.demo;
+        let screenshots = shots.is_some();
         let mut app = App {
             settings,
             pal,
             page,
             toasts: Toasts::default(),
             elevated: elevation::is_elevated(),
+            desktop_account: if demo || screenshots {
+                None
+            } else {
+                elevation::desktop_account_if_other()
+            },
             updater: Updater::default(),
             theme_override: launch.theme,
             save_at: None,
@@ -295,6 +303,19 @@ impl App {
 
     fn page_ui(&mut self, ui: &mut Ui) {
         let pal = self.pal;
+        if let Some(account) = &self.desktop_account {
+            widgets::banner(
+                ui,
+                &pal,
+                widgets::Tone::Warn,
+                icon::WARNING,
+                &format!(
+                    "Zest was started with a different Windows account than the one signed in ({account}). Cleaning and per-user settings apply to the account Zest runs as, not to {account}."
+                ),
+                None,
+            );
+            ui.add_space(8.0);
+        }
         let mut cx = Cx {
             pal: &pal,
             settings: &mut self.settings,

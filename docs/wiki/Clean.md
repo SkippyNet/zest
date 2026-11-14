@@ -55,4 +55,4 @@ Things to know:
 - Nothing here touches Windows Update, Microsoft Defender, SmartScreen, the firewall or User
   Account Control. Zest does not offer switches that weaken security.
 - If you elevate with a *different* administrator account, per-user settings are changed for that
-  account, not yours.
+  account, not yours. Zest shows a warning at the top of the window when that is the case.

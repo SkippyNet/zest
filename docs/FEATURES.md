@@ -107,7 +107,8 @@ please [report](https://github.com/SkippyNet/zest/issues) how it went.
 
 - **Elevating as a different account.** If you run Zest as administrator using another account's
   password, per-user tools (Custom clean, privacy switches for the current user) act on *that*
-  account. Zest does not detect this yet.
+  account. Zest detects this and shows a warning, but it cannot yet point those tools at the
+  account that is signed in.
 - **Proxies.** The update check and the catalog download honour proxy environment variables, not
   the Windows proxy settings.
 - **Backups** are not encrypted, are not scheduled, and do not keep permissions or alternate data

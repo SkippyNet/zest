@@ -150,3 +150,112 @@ mod tests {
         assert_eq!(first, is_elevated());
     }
 }
+
+/// The Windows account signed in to this desktop, when the process runs as a
+/// different one.
+///
+/// That happens when a standard user starts the program "as administrator"
+/// and types another account's password: the elevated process then belongs to
+/// that administrator, and everything that is "per user" (temporary files,
+/// browser profiles, `HKEY_CURRENT_USER`) is the administrator's, not that of
+/// the person at the keyboard. Returns `None` when both are the same account
+/// or when Windows does not say who is signed in.
+pub fn desktop_account_if_other() -> Option<String> {
+    static OTHER: OnceLock<Option<String>> = OnceLock::new();
+    OTHER
+        .get_or_init(|| {
+            let session = current_session_id()?;
+            // LogonUI records who is signed in to each session here.
+            let key = crate::reg::RegPath::hklm(format!(
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\SessionData\{session}"
+            ));
+            let signed_in = key.read_string("LoggedOnSAMUser")?;
+            let process = format!(
+                r"{}\{}",
+                std::env::var("USERDOMAIN").ok()?,
+                std::env::var("USERNAME").ok()?
+            );
+            other_account(&signed_in, &process)
+        })
+        .clone()
+}
+
+/// Compares two `DOMAIN\name` account names; returns the bare name of
+/// `signed_in` when they differ.
+fn other_account(signed_in: &str, process: &str) -> Option<String> {
+    let (signed_in, process) = (signed_in.trim(), process.trim());
+    if signed_in.is_empty()
+        || process.is_empty()
+        || signed_in.to_lowercase() == process.to_lowercase()
+    {
+        return None;
+    }
+    let name = signed_in.rsplit(r"\").next().unwrap_or(signed_in);
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// The Terminal Services session this process belongs to.
+fn current_session_id() -> Option<u32> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{GetTokenInformation, TOKEN_QUERY, TokenSessionId};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    // SAFETY: standard token query into a correctly sized u32; the handle is
+    // closed before returning.
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).ok()?;
+        let mut session = 0u32;
+        let mut returned = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenSessionId,
+            Some(&mut session as *mut u32 as *mut core::ffi::c_void),
+            size_of::<u32>() as u32,
+            &mut returned,
+        )
+        .is_ok();
+        let _ = CloseHandle(token);
+        ok.then_some(session)
+    }
+}
+
+#[cfg(test)]
+mod account_tests {
+    use super::*;
+
+    #[test]
+    fn same_account_in_any_spelling_is_not_other() {
+        assert_eq!(other_account(r"DESK\Alex", r"DESK\Alex"), None);
+        assert_eq!(other_account(r"DESK\Alex", r"desk\alex"), None);
+        assert_eq!(other_account(r" DESK\Alex ", r"DESK\Alex"), None);
+    }
+
+    #[test]
+    fn a_different_account_is_named() {
+        assert_eq!(
+            other_account(r"DESK\Alex", r"DESK\Admin"),
+            Some("Alex".to_owned())
+        );
+        assert_eq!(
+            other_account(r"AzureAD\Sam", r"DESK\Admin"),
+            Some("Sam".to_owned())
+        );
+    }
+
+    #[test]
+    fn missing_information_never_warns() {
+        assert_eq!(other_account("", r"DESK\Admin"), None);
+        assert_eq!(other_account(r"DESK\Alex", ""), None);
+    }
+
+    #[test]
+    fn this_process_runs_as_the_signed_in_account() {
+        // Tests are started from the developer's or the CI runner's own
+        // session, so the answer is "same account" or "unknown" (services).
+        assert!(current_session_id().is_some());
+        if std::env::var("GITHUB_ACTIONS").is_err() {
+            assert_eq!(desktop_account_if_other(), None);
+        }
+    }
+}
