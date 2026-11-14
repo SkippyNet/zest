@@ -4,13 +4,20 @@ name: Wiki
 #
 # GitHub only creates a wiki's storage when its first page is saved on the
 # website. Until someone does that once (Wiki tab → "Create the first page"),
-# this workflow says so and succeeds without doing anything.
+# this workflow says so and succeeds without doing anything. Saving that
+# first page starts this workflow by itself (the `gollum` event), so the
+# guide replaces the placeholder page without any further step.
+#
+# The wiki is a mirror: a page edited on the website is put back to what
+# docs/guide says. Change the guide in the repository instead.
 on:
   push:
     branches: [main]
     paths:
       - "docs/guide/**"
       - ".github/workflows/wiki.yml"
+  # A wiki page was created or edited on the website.
+  gollum:
   workflow_dispatch:
 
 permissions:
@@ -32,7 +39,7 @@ jobs:
           set -euo pipefail
           remote="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
           if ! git clone --quiet "$remote" wiki 2>/dev/null; then
-            echo "::notice::The wiki has not been created yet. Open the Wiki tab, save a first page once, then run this workflow again."
+            echo "::notice::The wiki has not been created yet. Open the Wiki tab and save a first page once; this workflow then runs by itself and fills it."
             exit 0
           fi
           find wiki -maxdepth 1 -name '*.md' -delete
