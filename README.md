@@ -1,195 +1,216 @@
 <div align="center">
 
-<img src="assets/logo.png" width="96" alt="Zest logo">
+<img src="assets/logo.png" width="112" alt="Zest logo: an orange slice with one segment pulled out">
 
 # Zest
 
-**Peel off the junk. Squeeze out the speed.** A fast, private, open-source cleaner and optimizer for Windows, written in Rust.
+**Peel off the junk. Squeeze out the speed.**
 
+A free, open-source PC cleaner and optimizer for Windows 10 and 11.<br>
+It shows you everything before it removes anything.
+
+[![Latest release](https://img.shields.io/github/v/release/SkippyNet/zest?label=release&color=f7931e)](https://github.com/SkippyNet/zest/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/SkippyNet/zest/total?label=downloads&color=f7931e)](https://github.com/SkippyNet/zest/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-7cc85a)](LICENSE)
+[![CI](https://github.com/SkippyNet/zest/actions/workflows/ci.yml/badge.svg)](https://github.com/SkippyNet/zest/actions/workflows/ci.yml)
+[![Live test](https://github.com/SkippyNet/zest/actions/workflows/live-test.yml/badge.svg)](https://github.com/SkippyNet/zest/actions/workflows/live-test.yml)
+[![Issues](https://img.shields.io/github/issues/SkippyNet/zest?color=74acea)](https://github.com/SkippyNet/zest/issues)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-b7410e?logo=rust)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4?logo=windows)](#requirements)
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+
+### [Download](https://github.com/SkippyNet/zest/releases/latest) &nbsp;·&nbsp; [Website](https://skippynet.github.io/zest/) &nbsp;·&nbsp; [Guide](https://github.com/SkippyNet/zest/wiki) &nbsp;·&nbsp; [Report a problem](https://github.com/SkippyNet/zest/issues/new/choose)
 
 </div>
 
-Zest frees disk space, removes traces of activity, and helps you keep a Windows PC
-quick and up to date. It shows you exactly what it will remove before it removes
-anything, it never phones home, and the whole thing is a single native executable.
-
-![Health check: one view of privacy, space, speed and security](docs/screenshots/health.png)
+![Health check: privacy, space, speed and security in one view](docs/screenshots/health.png)
 
 <details>
-<summary>More screenshots</summary>
+<summary><b>More screenshots</b></summary>
 
-![Custom clean: review exactly what will be removed](docs/screenshots/clean.png)
-
-![Disk analyzer: what is using the space](docs/screenshots/disk.png)
-
-![Light theme](docs/screenshots/health-light.png)
+| | |
+|---|---|
+| ![Custom clean](docs/screenshots/clean.png) Custom clean: every item listed before anything is removed | ![Disk analyzer](docs/screenshots/disk.png) Disk analyzer: what is using the space |
+| ![Windows privacy](docs/screenshots/privacy.png) Windows privacy: what Windows collects and shows you | ![Backup](docs/screenshots/backup.png) Backup: snapshots you can browse and restore |
+| ![System info](docs/screenshots/system.png) System info: hardware, drive health, battery | ![Light theme](docs/screenshots/health-light.png) Light theme |
 
 </details>
 
-The screenshots show made-up sample data (`zest.exe --demo`).
+<sub>Screenshots show made-up sample data (`zest.exe --demo`).</sub>
 
-## What it does
+## Download
+
+| | | |
+|---|---|---|
+| **Installer** | [`Zest-<version>-x64-setup.exe`](https://github.com/SkippyNet/zest/releases/latest) | Installs for your account, no administrator rights needed, updates itself. |
+| **Portable** | [`Zest-<version>-x64-portable.zip`](https://github.com/SkippyNet/zest/releases/latest) | Unzip anywhere, even a USB stick. Settings stay in its folder. |
+
+Windows 10 (1809 or later) or Windows 11, 64-bit.
+
+> **"Windows protected your PC"?** The files are not code-signed yet, so SmartScreen warns about
+> them. Choose *More info*, then *Run anyway*, or verify the download first: every release is
+> built by GitHub Actions from the tagged source and ships with `SHA256SUMS.txt` and a build
+> attestation (`gh attestation verify <file> --repo SkippyNet/zest`).
+
+## What is inside
 
 ### Clean
 
 | | |
 |---|---|
-| **Health check** | One pass over privacy, space, speed and security, with a single button to fix what is safe to fix. |
-| **Custom clean** | 70+ cleaning rules for Windows, browsers and applications. Analyze first, review every item, then clean. |
-| **Registry cleaner** | 15 categories of invalid entries. Every fix is backed up to a standard `.reg` file and can be restored in one click. |
-| **Secure deletion** | Optional 1, 3, 7 or 35-pass overwrite before deletion. |
+| **Health check** | Privacy, space, speed and security in one view, with one button for what is safe to fix. |
+| **Custom clean** | More than 70 rules for Windows, browsers and applications. Analyze, review every item, then clean. |
+| **Registry cleaner** | 15 kinds of invalid entries. Every fix is saved to a standard `.reg` file first and can be restored in one click. |
+| **Windows privacy** | Switches for what Windows collects, suggests and advertises. Each one is reversible. |
 | **Cookie keep list** | Stay signed in to the sites you choose while everything else is cleared. |
-| **Include and exclude** | Add your own folders to clean, and protect anything you never want touched. |
+| **Secure deletion** | Optional 1, 3, 7 or 35-pass overwrite. |
 
 ### Speed
 
 | | |
 |---|---|
-| **Startup manager** | Startup apps, scheduled tasks, services and Explorer context-menu entries, with reversible on/off switches. |
-| **Performance optimizer** | See which background apps cost CPU and memory, and put them to sleep until you need them. |
+| **Startup manager** | Startup apps, scheduled tasks, services and Explorer context-menu entries, with reversible switches. |
+| **Performance optimizer** | See which background apps cost processor time and memory, and put them to sleep until you use them. Boost does it in one click and undoes it afterwards. |
 
 ### Software
 
 | | |
 |---|---|
-| **Uninstaller** | Runs each program's own uninstaller, then finds the folders and registry keys it left behind. |
-| **Software updater** | Finds out-of-date programs and updates them from the publisher-verified Windows Package Manager sources. |
-| **Driver updater** | Lists installed drivers and installs newer ones from Windows Update, where drivers are signed and matched to your hardware. |
-| **Browser extensions** | Every extension in every browser profile, with a plain-language summary of how much access each one has. |
+| **Uninstaller** | Runs a program's own uninstaller, then finds the folders and registry keys it left behind. Removes Microsoft Store apps too. |
+| **Software updates** | Finds out-of-date programs and updates them through Windows Package Manager. It matches what is installed on *your* PC against the public catalog; there is no built-in list. |
+| **Driver updates** | Signed drivers matched to your hardware, from Windows Update only. Can back up your current drivers. |
+| **Browser extensions** | Every extension in every browser profile, rated by what it can access. |
 
 ### Storage
 
 | | |
 |---|---|
-| **Disk analyzer** | Scans a million files in a few seconds and shows what is using your space by type, by folder and by file. |
-| **Duplicate finder** | Byte-exact duplicate detection with BLAKE3. It always keeps at least one copy. |
-| **Drive wiper** | Overwrite free space so deleted files cannot be recovered, or securely shred chosen files. |
+| **Disk analyzer** | What fills a drive: folder tree, largest files, file types. A whole drive in seconds. |
+| **Duplicate finder** | Byte-for-byte identical files. Always keeps at least one copy of each. |
+| **Empty folders** | Finds and removes folders that hold nothing. |
+| **Drive wiper** | Wipe free space, shred files, or erase a whole drive. |
 
-### Automation
+### Protect
 
 | | |
 |---|---|
-| **Scheduled cleaning** | Daily, weekly, monthly or at sign-in, through the Windows Task Scheduler. Zest does not need to stay running. |
-| **Smart cleaning** | An optional tray agent that tells you (or cleans) when junk passes a size you set, or when you close a browser. |
-| **Multi-user cleaning** | Clean every account on the PC in one run when started as administrator. |
-| **Command line** | Everything scriptable through `zest-cli`, with JSON output. |
+| **Backup** | Versioned, deduplicated, compressed backups of your folders. Browse any snapshot, restore single files, verify integrity. |
+| **System image** | A full image of the PC through Windows' own imaging engine, restorable from the Windows recovery environment. |
+| **System restore** | List, create and remove restore points. |
 
-## Why Zest
+### System
 
-**You see everything first.** Analysis is a separate, read-only step. Its result is the exact list of files,
-registry entries and operations that cleaning will act on, so what you review is what gets removed.
-
-**It is hard to break things with it.** Every deletion in the app, from every feature, passes through one guard
-that refuses critical locations no matter what asked for the deletion. See [Safety model](#safety-model).
-
-**Private by design.** No telemetry, no account, no ads, no bundled offers. Zest itself makes no network
-connections; the software and driver updaters work through Windows' own components.
-
-**Fast and small.** Native Rust with parallel scanning throughout. Analyzing several gigabytes of junk
-takes a fraction of a second, and a full system-drive analysis takes a few seconds.
-
-**Honest about limits.** Overwriting cannot guarantee destruction on SSDs. A registry cleaner will not
-make your PC faster. Zest says so where it matters instead of promising otherwise.
-
-## Safety model
-
-Cleaners are trusted with deleting things, so safety is designed in rather than left to each rule:
-
-- **A single hard guard.** Drive roots, the Windows folder (outside an allow-list of temp, log and cache
-  folders), Program Files, user profile folders, and system files such as the page file can never be deleted,
-  even by a faulty rule or a hand-written include. The check also resolves 8.3 short names and junctions,
-  so a path cannot sneak into a protected area.
-- **Links are never followed.** Junctions and symbolic links are removed as links. Nothing behind them is touched.
-- **Programs in use are skipped.** A browser that is running is not cleaned; files held open by other programs
-  are counted as "in use", not forced.
-- **Conservative by default.** Privacy rules (cookies, history, saved passwords, open tabs) are opt-in.
-  Rules that remove something you might miss ask before they are enabled.
-- **Reversible where possible.** Registry fixes and removed startup entries are backed up. Tools that delete
-  your own files (duplicates, large files, leftovers) use the Recycle Bin by default.
-- **Never guess.** "Missing target" checks only report a file as missing when the file system gives a
-  definite answer on a local fixed drive. Network shares, unplugged drives and access-denied folders are
-  treated as unknown.
-
-## Requirements
-
-- Windows 10 or Windows 11, 64-bit
-- Administrator rights are optional. Zest runs as a standard user and offers to restart elevated
-  only for the items that need it (system-wide temp files, machine-wide registry entries, services,
-  restore points, driver installation).
-
-## Build from source
-
-```powershell
-git clone https://github.com/SkippyNet/zest.git
-cd zest
-cargo build --release
-```
-
-The executables are written to `target\release\`:
-
-| File | Purpose |
+| | |
 |---|---|
-| `zest.exe` | The application |
-| `zest-cli.exe` | The command line interface |
+| **System info** | What is in the PC: processor, memory, graphics, drives with health, battery wear. |
+| **Windows tools** | System file check, component repair, disk check, network reset and more: Windows' own repair commands, one click away, with their output. |
 
-You need a recent stable Rust toolchain with the MSVC target and the Visual Studio C++ build tools.
+### Everywhere
+
+| | |
+|---|---|
+| **Scheduled and smart cleaning** | Clean on a schedule through Task Scheduler, or let a small tray agent tell you when junk builds up. |
+| **Command line** | `zest-cli` does what the app does, with `--json` for scripts. |
+| **Updates itself** | Checks this repository's releases, verifies the download's checksum and installs it. |
+| **Light and dark** | Follows Windows or your choice. |
+
+## How it keeps you safe
+
+1. **Analyze, then act.** Every tool has a read-only step that lists exactly what it would do.
+   What you reviewed is what gets done.
+2. **Guarded deletion.** One guard in [`crates/core/src/safety.rs`](crates/core/src/safety.rs)
+   refuses Windows, program folders, your profile's own folders and anything reached through a
+   junction or symbolic link, whatever a rule says. Links are never followed.
+3. **Registry backups.** Registry changes are exported to a `.reg` file before they are made.
+4. **Privacy rules are off by default.** Out of the box Zest removes junk. Cookies, history and
+   saved passwords are only touched if you tick them.
+5. **It keeps to itself.** No telemetry, no ads, no account. It goes online for its own update
+   check and for the software catalog when you ask for updates; both can be switched off.
+
+More in the [safety guide](https://github.com/SkippyNet/zest/wiki/Safety).
+
+## How updates work
+
+- **Zest itself** asks GitHub once a day for the newest release of this repository. If there is
+  one, it downloads the installer (or the portable zip), checks it against the release's
+  `SHA256SUMS.txt` and installs it. Switch the check off under *Options → About*.
+- **Your software** is matched against the public Windows Package Manager catalog, on your PC.
+  Zest ships no list of programs, so it works the same on a PC with entirely different software.
+  Where Windows Package Manager is missing, Zest reads the catalog directly to show what is out
+  of date and offers to install Windows Package Manager to do the updating.
+- **Drivers** come from Windows Update and nowhere else.
 
 ## Command line
 
 ```text
-zest-cli health                  Check privacy, space, speed and security
-zest-cli analyze [--all]         Show what a clean would remove (changes nothing)
-zest-cli clean [--dry-run]       Clean using your saved selection
-zest-cli rules                   List every cleaning rule and whether it is selected
-zest-cli registry scan           List invalid registry entries
-zest-cli startup list            List startup apps, tasks, services and context-menu entries
-zest-cli apps list               List installed programs
-zest-cli updates list            List programs with updates available
-zest-cli drivers list            List installed third-party drivers
-zest-cli disk analyze <path>     Break down what uses space under a folder
-zest-cli duplicates <path>...    Find duplicate files
+zest-cli health                    privacy, space, speed and security at a glance
+zest-cli analyze [--all]           what a clean would remove (changes nothing)
+zest-cli clean --dry-run           the same, through the cleaning path (changes nothing)
+zest-cli clean --yes               clean with your saved selection
+zest-cli registry scan|fix         invalid registry entries; fix backs them up first
+zest-cli privacy list|apply|revert Windows privacy settings
+zest-cli tools list|run <id>       Windows' own repair tools
+zest-cli startup list              everything that starts by itself
+zest-cli apps list                 installed programs
+zest-cli updates list              programs with updates waiting
+zest-cli drivers list              third-party drivers
+zest-cli disk analyze C:\Users     what uses the space under a folder
+zest-cli duplicates D:\Photos      identical files
+zest-cli backup create|list|restore|verify
+zest-cli system                    hardware and health report
+zest-cli update check              is there a newer Zest?
 ```
 
-Add `--json` to any command for machine-readable output.
+Add `--json` to any command for machine-readable output. Full reference in the
+[guide](https://github.com/SkippyNet/zest/wiki/Command-line).
 
-## Project layout
+## Project status
 
-Zest is a Cargo workspace. Each feature is its own crate with no UI code, so the engines can be
-tested, reused and scripted independently.
+Zest is at version 0.9: complete enough to use, young enough that you should read the list before
+you press *Clean*.
+
+- Every push runs the test suite on GitHub's Windows machines.
+- A [live test](.github/workflows/live-test.yml) runs Zest for real on a throw-away Windows
+  machine: it plants junk, cleans it, and checks that documents, fresh files and anything behind
+  a junction are still there.
+- [docs/FEATURES.md](docs/FEATURES.md) lists every feature and how far it has been verified.
+  Some tools that need administrator rights or special hardware have only been tested on
+  sandboxed data so far. If you try one on a spare PC, tell us how it went.
+
+## Building from source
+
+Rust 1.92 or later and the Visual Studio C++ build tools:
+
+```powershell
+git clone https://github.com/SkippyNet/zest
+cd zest
+cargo build --release          # target\release\zest.exe and zest-cli.exe
+cargo test --workspace
+```
+
+The workspace:
 
 | Crate | What it holds |
 |---|---|
-| `zest-core` | The safety guard, secure deletion, registry backups, path and process helpers |
-| `zest-cleaner` | Junk and privacy rules, the scan and clean engines, cookie keep list, browser extensions |
-| `zest-registry` | Registry scanners and fixes |
-| `zest-disk` | Disk analyzer, duplicate finder, drive wiper |
-| `zest-system` | Startup manager, uninstaller, System Restore |
-| `zest-updates` | Software updater and driver updater |
-| `zest-performance` | Process sampling, background app control, power plans |
-| `zest-engine` | Settings, history, Health Check, scheduling, smart cleaning |
-| `zest` | The desktop application |
-| `zest-cli` | The command line interface |
+| `crates/core` | Safety guard, deletion, registry backups, directory walking, paths |
+| `crates/cleaner` | Cleaning rules and the scan/clean engine |
+| `crates/registry` | Registry cleaner |
+| `crates/system` | Startup manager, uninstaller, System Restore |
+| `crates/performance` | Live process sampling, sleep, power plans |
+| `crates/updates` | Software and driver updates, Zest's own updater |
+| `crates/disk` | Disk analyzer, duplicates, empty folders, wiper |
+| `crates/backup` | File backups and system images |
+| `crates/tweaks` | Windows privacy settings and repair tools |
+| `crates/hardware` | Hardware inventory, drive and battery health |
+| `crates/engine` | Settings, history, scheduling, smart cleaning |
+| `crates/app` | The application (`zest.exe`) |
+| `crates/cli` | The command line tool (`zest-cli.exe`) |
 
-Run the test suite with `cargo test --workspace`. Tests that change anything work only on temporary
-folders and scratch registry keys they create themselves.
+## Contributing and support
 
-The full feature plan, with what has been verified and how, is in [docs/FEATURES.md](docs/FEATURES.md).
-
-## Roadmap
-
-- Signed installer and portable builds
-- In-app update check
-- Localization
-- More application cleaning rules
-
-## Contributing
-
-Issues and pull requests are welcome. Cleaning rules are the easiest place to start: each one is a few
-lines in `crates/cleaner/src/catalog/`, and a test checks that no rule can ever target a protected location.
+- **Found a problem or have an idea?** Use the [issue tracker](https://github.com/SkippyNet/zest/issues).
+- **Security problem?** Please [report it privately](SECURITY.md).
+- **Want to help?** Read [CONTRIBUTING.md](CONTRIBUTING.md). Testing a feature on real hardware
+  is as valuable as code.
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE). Copyright 2026 Pseudo Nymm and the Zest contributors.
