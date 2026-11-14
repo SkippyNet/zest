@@ -98,7 +98,7 @@ please [report](https://github.com/SkippyNet/zest/issues) how it went.
 | Scheduled cleaning | Proven | `engine/schedule.rs`, `app/agent.rs` | Task Scheduler accepts the task (CI); the clean it starts runs in the live test |
 | Smart cleaning tray agent | Read-verified | `app/agent.rs`, `engine/smart.rs` | Starts, idles and exits when switched off; its notifications have not been seen by a person |
 | Installer | Proven | `installer/zest.iss` | The release workflow installs, runs and uninstalls it before publishing |
-| Zest's own updates | Sandbox only until two releases exist | `updates/selfupdate/` | Check, download, checksum and file swap tested against a local stand-in server |
+| Zest's own updates | Proven | `updates/selfupdate/` | Live test: a portable copy and an installed copy built with a lower version number update themselves to the latest release (download, checksum, file swap or installer). The "Update now" button in the app has not been clicked by a person |
 | Settings, history, portable mode | Proven | `engine/`, `core/paths.rs` | |
 | App window on machines without a graphics driver | Proven | `app/gpu.rs` | The live test draws every page on a machine with no GPU |
 | Light and dark themes | Read-verified | `app/theme.rs` | |
