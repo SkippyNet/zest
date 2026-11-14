@@ -22,7 +22,7 @@ unicode-width = "0.2"
 zest-system.workspace = true
 # Reads the public package catalog index (SQLite inside a zip container).
 rusqlite = { version = "0.42", features = ["bundled"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 # HTTPS through the Windows certificate store, for the catalog and for
 # Zest's own update check.
 ureq = { version = "3", default-features = false, features = ["native-tls-no-default"] }
