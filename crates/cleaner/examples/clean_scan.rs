@@ -1,9 +1,10 @@
 //! Read-only analysis of this PC. Nothing is deleted.
 //!
-//! `cargo run -p zest-cleaner --example clean_scan [-- --all] [-- --verbose]`
+//! `cargo run -p zest-cleaner --example clean_scan [-- --all] [-- --verbose] [-- --timings]`
 //!
 //! `--all` analyses every rule (including privacy rules) instead of the
-//! default selection; `--verbose` lists the largest findings per rule.
+//! default selection; `--verbose` lists the largest findings per rule;
+//! `--timings` analyses every selected rule on its own and lists the slowest.
 
 use zest_cleaner::{Catalog, CleanOptions, Section, cookies, extensions, scan};
 use zest_core::fmt::{format_bytes, format_count, format_duration};
@@ -99,6 +100,34 @@ fn main() {
         format_count(report.items),
         format_duration(report.elapsed)
     );
+
+    if std::env::args().any(|a| a == "--timings") {
+        // Each rule on its own, to see which ones the analysis spends its time on.
+        let mut timings: Vec<(std::time::Duration, String, u64)> = opts
+            .enabled
+            .iter()
+            .map(|id| {
+                let single = CleanOptions {
+                    enabled: std::iter::once(id.clone()).collect(),
+                    ..opts.clone()
+                };
+                let started = std::time::Instant::now();
+                let report = scan(&catalog, &single, &Progress::new());
+                (started.elapsed(), id.clone(), report.items)
+            })
+            .collect();
+        timings.sort_by_key(|t| std::cmp::Reverse(t.0));
+        println!("\nSlowest rules when analysed alone:");
+        for (elapsed, id, items) in timings.iter().take(15) {
+            println!(
+                "  {:>8}  {:<40} {:>8} items",
+                format_duration(*elapsed),
+                id,
+                format_count(*items)
+            );
+        }
+        return;
+    }
 
     let inventory = cookies::inventory(&users);
     println!(

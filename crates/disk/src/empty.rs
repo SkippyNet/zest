@@ -5,7 +5,7 @@
 //! an empty tree is reported.
 
 use crate::fastdir::{self, ATTR_HIDDEN, ATTR_SYSTEM, path_key};
-use crate::pool::{FxHashSet, pool};
+use crate::pool::{FxHashSet, walk_pool};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -166,7 +166,7 @@ pub fn find_empty_folders(
     progress.set_total(0);
     progress.set_done(0);
     progress.set_message("Looking for empty folders");
-    let mut found: Vec<PathBuf> = pool().install(|| {
+    let mut found: Vec<PathBuf> = walk_pool().install(|| {
         roots
             .par_iter()
             .flat_map_iter(|root| scan(&ctx, root).found)

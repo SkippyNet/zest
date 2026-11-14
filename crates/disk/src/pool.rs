@@ -1,18 +1,27 @@
-//! The worker pool shared by all scanners in this crate, plus small helpers
-//! for per-thread accumulation.
+//! The worker pools of this crate, plus small helpers for per-thread
+//! accumulation.
+//!
+//! Two kinds of work, two pools: listing folders is limited by the file
+//! system and runs on the shared, deliberately small walk pool of
+//! [`zest_core::fastdir`]; hashing file contents is limited by the processor
+//! and gets every core.
 
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-/// Recursive directory scans nest one stack frame per folder level and may
-/// pick up further work while waiting, so workers get a generous stack.
+/// Jobs may pick up further work while waiting, so workers get a generous stack.
 const WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
 
-/// Upper bound on worker threads; directory enumeration stops scaling long
-/// before this on real disks.
+/// Upper bound on worker threads.
 const MAX_WORKERS: usize = 32;
 
-/// The dedicated thread pool for disk scans.
+/// The pool that walks folders: at most a handful of threads, shared with
+/// every other scanner of the product.
+pub(crate) fn walk_pool() -> &'static rayon::ThreadPool {
+    zest_core::fastdir::pool()
+}
+
+/// The pool for processor-bound work (hashing, sorting): one thread per core.
 pub(crate) fn pool() -> &'static rayon::ThreadPool {
     static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
     POOL.get_or_init(|| {
@@ -43,9 +52,13 @@ pub(crate) struct Shards<T> {
 }
 
 impl<T: Default> Shards<T> {
-    /// Creates one slot per pool worker plus one for outside callers.
+    /// Creates one slot per worker of the larger pool plus one for outside
+    /// callers.
     pub fn new() -> Self {
-        let count = pool().current_num_threads() + 1;
+        let count = pool()
+            .current_num_threads()
+            .max(walk_pool().current_num_threads())
+            + 1;
         Shards {
             slots: (0..count).map(|_| Mutex::new(T::default())).collect(),
         }

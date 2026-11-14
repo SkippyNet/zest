@@ -99,18 +99,29 @@ pub fn check(settings: &Settings, progress: &Progress) -> HealthReport {
     // The software check talks to the package manager and is the slow part,
     // so it runs alongside the local analysis.
     let ignored = settings.general.ignored_updates.clone();
+    let catalog_fallback = settings.general.catalog_fallback;
     let (scan_report, startup_items, updates) = std::thread::scope(|scope| {
         let updates = scope.spawn(|| {
-            if !software::is_available() {
-                return None;
-            }
             let check = CheckOptions {
                 ignore_ids: ignored,
+                catalog_fallback,
                 ..Default::default()
             };
-            software::check_updates(&check, &Progress::new())
-                .map_err(|e| log::warn!("software update check failed: {e}"))
-                .ok()
+            // `None` means "could not be checked", never "up to date".
+            match software::check(&check, &Progress::new()) {
+                Ok(software::Listing::PackageManager(updates)) => Some(updates),
+                Ok(software::Listing::Catalog { updates, .. }) => {
+                    Some(updates.into_iter().map(SoftwareUpdate::from).collect())
+                }
+                Ok(software::Listing::Unavailable { problem, .. }) => {
+                    log::warn!("software updates could not be checked: {}", problem.title());
+                    None
+                }
+                Err(e) => {
+                    log::warn!("software update check failed: {e}");
+                    None
+                }
+            }
         });
         let startup_items = scope.spawn(|| {
             startup::list_startup_programs()

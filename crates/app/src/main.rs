@@ -13,10 +13,12 @@ mod agent;
 mod app;
 mod brand_icon;
 mod demo;
+mod gpu;
 mod instance;
 mod job;
 mod pages;
 mod theme;
+mod updater;
 mod widgets;
 
 use app::{App, Launch};
@@ -68,7 +70,49 @@ fn focus_existing_window() {
     }
 }
 
-fn main() -> eframe::Result {
+/// Tells the user why no window appeared. The GUI has no console, so a
+/// message box is the only place left to say it.
+fn show_fatal(message: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+    use windows::core::HSTRING;
+    log::error!("{message}");
+    // SAFETY: both strings are valid, NUL-terminated wide strings for the call.
+    unsafe {
+        MessageBoxW(
+            None,
+            &HSTRING::from(message),
+            &HSTRING::from(brand::NAME),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+}
+
+/// Starts the app again with Direct3D after OpenGL failed to initialise.
+fn restart_with_direct3d(args: &[String]) -> std::io::Result<()> {
+    let mut forwarded: Vec<&str> = Vec::new();
+    let mut skip_value = false;
+    for arg in args {
+        if skip_value {
+            skip_value = false;
+        } else if arg == gpu::OVERRIDE_ARG {
+            skip_value = true;
+        } else if arg != RESTARTED_ARG {
+            forwarded.push(arg);
+        }
+    }
+    std::process::Command::new(std::env::current_exe()?)
+        .args(forwarded)
+        .args([
+            gpu::OVERRIDE_ARG,
+            gpu::Backend::Direct3d.name(),
+            RESTARTED_ARG,
+        ])
+        .spawn()
+        .map(|_| ())
+}
+
+fn main() {
+    gpu::mark_start();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == autostart::AGENT_ARG) {
         logging::init("agent", false);
@@ -87,10 +131,11 @@ fn main() -> eframe::Result {
 
     // One main window per user session (screenshot runs are exempt so they
     // can be taken while the app is open).
-    let _instance = if launch.screenshots.is_none() {
+    let instance = if launch.screenshots.is_none() {
         let restarted = args.iter().any(|a| a == RESTARTED_ARG);
         let mut guard = instance::acquire(instance::APP_MUTEX);
-        // After "Restart as administrator" the previous window needs a moment to close.
+        // After a restart (as administrator, or with other graphics) the
+        // previous window needs a moment to close.
         let mut attempts = 0;
         while guard.is_none() && restarted && attempts < 50 {
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -101,13 +146,21 @@ fn main() -> eframe::Result {
             Some(guard) => Some(guard),
             None => {
                 focus_existing_window();
-                return Ok(());
+                return;
             }
         }
     } else {
         None
     };
 
+    // Only the one real window clears away what a finished update of Zest
+    // left behind; a second start must not disturb a download in progress.
+    if instance.is_some() {
+        zest_engine::updates::selfupdate::cleanup_after_update();
+    }
+
+    // Screenshot runs leave no trace, so they do not record what worked.
+    let graphics = gpu::Plan::for_launch(&args, launch.screenshots.is_none());
     let settings = Settings::load();
     let icon = egui::IconData {
         rgba: brand_icon::render(64),
@@ -126,11 +179,35 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport,
         centered: true,
+        wgpu_options: graphics.wgpu_options(),
         ..Default::default()
     };
-    eframe::run_native(
+    let result = eframe::run_native(
         brand::NAME,
         options,
         Box::new(move |cc| Ok(Box::new(App::new(cc, launch)))),
-    )
+    );
+    let Err(error) = result else {
+        return;
+    };
+
+    if graphics.should_fall_back() {
+        // OpenGL is missing or too old here (remote sessions, virtual
+        // machines, PCs without a graphics driver). Direct3D always works.
+        log::warn!("OpenGL could not be started ({error}); starting again with Direct3D");
+        graphics.note_opengl_failed();
+        // Let the new process take over the single-instance lock.
+        drop(instance);
+        match restart_with_direct3d(&args) {
+            Ok(()) => return,
+            Err(e) => log::error!("could not start again: {e}"),
+        }
+    }
+    show_fatal(&format!(
+        "{} could not open its window.\n\n{error}\n\nGraphics: {}. Starting with \"{} software\" draws without the graphics driver.",
+        brand::NAME,
+        graphics.backend().name(),
+        gpu::OVERRIDE_ARG,
+    ));
+    std::process::exit(1);
 }

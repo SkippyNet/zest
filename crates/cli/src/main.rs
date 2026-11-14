@@ -1,10 +1,15 @@
 //! Command line interface for Zest.
 //!
-//! Every command that only looks is safe to run at any time. The one command
-//! that removes things, `clean`, asks for confirmation unless `--yes` is
-//! given, and supports `--dry-run`.
+//! Every command that only looks is safe to run at any time. Commands that
+//! remove or change something (`clean`, `registry fix`, `privacy apply`,
+//! `tools run`, `backup restore`, `update install`) ask for confirmation
+//! unless `--yes` is given; `clean` also supports `--dry-run`.
 
 #![cfg(windows)]
+
+mod backup_cmd;
+mod maintain_cmd;
+mod update_cmd;
 
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -19,7 +24,7 @@ use zest_engine::disk::{self, AnalyzeOptions, DuplicateOptions};
 use zest_engine::registry::{self, ScanOptions};
 use zest_engine::system::apps::{self, ListOptions};
 use zest_engine::system::startup;
-use zest_engine::updates::{drivers, software};
+use zest_engine::updates::drivers;
 use zest_engine::{RunKind, Settings, health, ops};
 
 #[derive(Parser)]
@@ -60,7 +65,7 @@ enum Command {
     /// Registry cleaner.
     Registry {
         #[command(subcommand)]
-        action: RegistryAction,
+        action: maintain_cmd::RegistryAction,
     },
     /// Startup apps, scheduled tasks, services and context-menu entries.
     Startup {
@@ -96,12 +101,28 @@ enum Command {
         #[arg(long, default_value_t = 8 * 1024)]
         min_size: u64,
     },
-}
-
-#[derive(Subcommand)]
-enum RegistryAction {
-    /// List invalid registry entries (changes nothing).
-    Scan,
+    /// Windows privacy settings: where each one stands, apply and revert.
+    Privacy {
+        #[command(subcommand)]
+        action: maintain_cmd::PrivacyAction,
+    },
+    /// The repair and maintenance tools that ship with Windows.
+    Tools {
+        #[command(subcommand)]
+        action: maintain_cmd::ToolsAction,
+    },
+    /// Hardware, drive health and battery of this PC (changes nothing).
+    System,
+    /// Versioned file backups: create, list, restore and verify.
+    Backup {
+        #[command(subcommand)]
+        action: backup_cmd::BackupAction,
+    },
+    /// Zest's own updates: check for a newer version and install it.
+    Update {
+        #[command(subcommand)]
+        action: update_cmd::UpdateAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -430,25 +451,7 @@ fn apps_list(json: bool) -> CliResult {
 }
 
 fn updates_list(json: bool) -> CliResult {
-    let settings = Settings::load();
-    let options = software::CheckOptions {
-        ignore_ids: settings.general.ignored_updates.clone(),
-        ..Default::default()
-    };
-    let updates = software::check_updates(&options, &Progress::new()).map_err(|e| e.to_string())?;
-    if json {
-        return print_json(&updates);
-    }
-    for update in &updates {
-        println!(
-            "{:<44} {:<20} -> {}",
-            truncate(&update.name, 44),
-            truncate(&update.installed_version, 20),
-            update.available_version
-        );
-    }
-    println!("\n{} available.", plural(updates.len() as u64, "update"));
-    Ok(())
+    update_cmd::software_list(json)
 }
 
 fn drivers_list(json: bool) -> CliResult {
@@ -553,6 +556,63 @@ fn duplicates(json: bool, paths: Vec<PathBuf>, min_size: u64) -> CliResult {
     Ok(())
 }
 
+/// Prints the hardware inventory. The report names no serial numbers,
+/// network addresses, computer or user.
+fn system_info(json: bool) -> CliResult {
+    let inventory = zest_engine::hardware::inventory();
+    if json {
+        println!("{}", zest_engine::hardware::to_json(&inventory));
+    } else {
+        print!("{}", zest_engine::hardware::to_text(&inventory));
+    }
+    Ok(())
+}
+
+fn privacy_list(json: bool) -> CliResult {
+    use zest_engine::tweaks::privacy::{Category, Privacy, State};
+
+    let privacy = Privacy::system();
+    let list = privacy.list();
+    if json {
+        return print_json(&list);
+    }
+    for category in Category::ALL {
+        println!("{}", category.label());
+        for status in list.iter().filter(|s| s.tweak.category == category) {
+            let state = match status.state {
+                State::Private => "private",
+                State::Default => "default",
+                State::Custom => "custom",
+                State::NotApplicable => "n/a",
+            };
+            let mut flags = Vec::new();
+            if status.tweak.recommended {
+                flags.push("recommended");
+            }
+            if status.needs_admin {
+                flags.push("needs administrator");
+            }
+            println!(
+                "  {:<8} {:<26} {:<48} {}",
+                state,
+                status.tweak.id,
+                truncate(status.tweak.title, 48),
+                flags.join(", ")
+            );
+        }
+        println!();
+    }
+    let applicable = list
+        .iter()
+        .filter(|s| s.state != State::NotApplicable)
+        .count();
+    let private = list.iter().filter(|s| s.state == State::Private).count();
+    println!(
+        "{private} of {applicable} settings are private. Change them on the Windows privacy page of the app."
+    );
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let json = cli.json;
@@ -561,9 +621,10 @@ fn main() -> ExitCode {
         Command::Analyze { all } => analyze(json, all),
         Command::Clean { dry_run, yes } => clean(json, dry_run, yes),
         Command::Rules => rules(json),
-        Command::Registry {
-            action: RegistryAction::Scan,
-        } => registry_scan(json),
+        Command::Registry { action } => match action {
+            maintain_cmd::RegistryAction::Scan => registry_scan(json),
+            maintain_cmd::RegistryAction::Fix { yes } => maintain_cmd::registry_fix(json, yes),
+        },
         Command::Startup {
             action: ListAction::List,
         } => startup_list(json),
@@ -580,6 +641,24 @@ fn main() -> ExitCode {
             action: DiskAction::Analyze { path },
         } => disk_analyze(json, path),
         Command::Duplicates { paths, min_size } => duplicates(json, paths, min_size),
+        Command::Privacy { action } => match action {
+            maintain_cmd::PrivacyAction::List => privacy_list(json),
+            maintain_cmd::PrivacyAction::Apply {
+                ids,
+                recommended,
+                yes,
+            } => maintain_cmd::privacy_apply(json, ids, recommended, yes),
+            maintain_cmd::PrivacyAction::Revert { ids, all, yes } => {
+                maintain_cmd::privacy_revert(json, ids, all, yes)
+            }
+        },
+        Command::Tools { action } => match action {
+            maintain_cmd::ToolsAction::List => maintain_cmd::tools_list(json),
+            maintain_cmd::ToolsAction::Run { id, yes } => maintain_cmd::tools_run(json, &id, yes),
+        },
+        Command::System => system_info(json),
+        Command::Backup { action } => backup_cmd::run(json, action),
+        Command::Update { action } => update_cmd::run(json, action),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

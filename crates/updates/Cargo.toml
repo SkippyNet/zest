@@ -18,6 +18,18 @@ log.workspace = true
 chrono.workspace = true
 # Display-column measurement for the package manager's text tables.
 unicode-width = "0.2"
+# The installed-program inventory that the catalog is matched against.
+zest-system.workspace = true
+# Reads the public package catalog index (SQLite inside a zip container).
+rusqlite = { version = "0.42", features = ["bundled"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# HTTPS through the Windows certificate store, for the catalog and for
+# Zest's own update check.
+ureq = { version = "3", default-features = false, features = ["native-tls-no-default"] }
+# Release downloads are verified against their published SHA-256 sums.
+sha2 = "0.10"
+semver = "1"
+thiserror.workspace = true
 
 [dependencies.windows]
 workspace = true
@@ -25,6 +37,7 @@ features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_Properties",
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_System_Com",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Ole",

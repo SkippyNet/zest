@@ -12,6 +12,7 @@
 //! * [`elevation`] – administrator detection and relaunch.
 //! * [`cmdline`] – conservative resolution of registry command lines.
 //! * [`fileinfo`] – publisher/description lookup from version resources.
+//! * [`fastdir`] / [`walk`] – bulk directory listing and link-safe tree walks.
 
 #![cfg(windows)]
 
@@ -19,6 +20,7 @@ pub mod cmdline;
 pub mod delete;
 pub mod elevation;
 pub mod error;
+pub mod fastdir;
 pub mod fileinfo;
 pub mod fmt;
 pub mod logging;

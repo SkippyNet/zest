@@ -4,10 +4,11 @@
 //! folders they were never pointed at. Everything here treats links as opaque
 //! leaf entries.
 
-use crate::Progress;
+use crate::{Progress, fastdir};
+use rayon::prelude::*;
 use std::fs::Metadata;
 use std::os::windows::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const FILE_ATTRIBUTE_READONLY: u32 = 0x1;
 const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
@@ -122,6 +123,9 @@ pub struct TreeSize {
 
 /// Measures everything below `root` without following links.
 /// A `root` that is itself a file yields that file's size.
+///
+/// The tree is read in bulk and in parallel on the shared walk pool (see
+/// [`crate::fastdir`]); the calling thread waits for the result.
 pub fn tree_size(root: &Path, progress: Option<&Progress>) -> TreeSize {
     let mut size = TreeSize::default();
     match std::fs::symlink_metadata(root) {
@@ -137,15 +141,52 @@ pub fn tree_size(root: &Path, progress: Option<&Progress>) -> TreeSize {
         Ok(_) => {}
         Err(_) => return size,
     }
-    walk_tree(root, progress, &mut |_, meta, kind| match kind {
-        EntryKind::File => {
-            size.files += 1;
-            size.bytes += meta.len();
+    let root = fastdir::absolute(root);
+    fastdir::pool().install(|| size_below(&root, progress))
+}
+
+impl TreeSize {
+    fn plus(self, other: TreeSize) -> TreeSize {
+        TreeSize {
+            bytes: self.bytes + other.bytes,
+            files: self.files + other.files,
+            dirs: self.dirs + other.dirs,
         }
-        EntryKind::Link => size.files += 1,
-        EntryKind::Dir => size.dirs += 1,
+    }
+}
+
+/// Totals of one real folder: its own entries plus, in parallel, its
+/// sub-folders. Links are counted and left alone.
+fn size_below(dir: &Path, progress: Option<&Progress>) -> TreeSize {
+    let mut size = TreeSize::default();
+    if progress.is_some_and(|p| p.is_cancelled()) {
+        return size;
+    }
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    // An unreadable folder counts as empty, as it always has.
+    let _ = fastdir::read_dir_raw(dir, &mut |entry| {
+        if entry.is_link() {
+            size.files += 1;
+        } else if entry.is_dir() {
+            size.dirs += 1;
+            subdirs.push(entry.path_in(dir));
+        } else {
+            size.files += 1;
+            size.bytes += entry.size;
+        }
     });
-    size
+    let below = if subdirs.len() < 2 {
+        subdirs
+            .iter()
+            .map(|sub| size_below(sub, progress))
+            .fold(TreeSize::default(), TreeSize::plus)
+    } else {
+        subdirs
+            .par_iter()
+            .map(|sub| size_below(sub, progress))
+            .reduce(TreeSize::default, TreeSize::plus)
+    };
+    size.plus(below)
 }
 
 #[cfg(test)]
@@ -209,5 +250,184 @@ mod tests {
         });
         assert_eq!(seen, vec![("link".to_owned(), EntryKind::Link)]);
         assert_eq!(tree_size(&inside, None).bytes, 0);
+    }
+}
+
+#[cfg(test)]
+mod fast_walk_tests {
+    use super::*;
+    use std::fs;
+
+    fn junction(link: &Path, target: &Path) {
+        let out = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "mklink failed");
+    }
+
+    /// The reference: the plain, one-entry-at-a-time walk.
+    fn slow_size(root: &Path) -> TreeSize {
+        let mut size = TreeSize::default();
+        walk_tree(root, None, &mut |_, meta, kind| match kind {
+            EntryKind::File => {
+                size.files += 1;
+                size.bytes += meta.len();
+            }
+            EntryKind::Link => size.files += 1,
+            EntryKind::Dir => size.dirs += 1,
+        });
+        size
+    }
+
+    #[test]
+    fn agrees_with_the_plain_walk_on_a_wide_and_deep_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let mut expected_bytes = 0u64;
+        for a in 0..12 {
+            for b in 0..6 {
+                let dir = root.join(format!("a{a}")).join(format!("b{b}")).join("c");
+                fs::create_dir_all(&dir).unwrap();
+                for f in 0..5 {
+                    let len = (a * 37 + b * 11 + f) as usize;
+                    fs::write(dir.join(format!("f{f}.bin")), vec![0u8; len]).unwrap();
+                    expected_bytes += len as u64;
+                }
+            }
+        }
+        fs::create_dir(root.join("empty")).unwrap();
+        let fast = tree_size(root, None);
+        assert_eq!(fast, slow_size(root));
+        assert_eq!(fast.bytes, expected_bytes);
+        assert_eq!(fast.files, 12 * 6 * 5);
+        assert_eq!(fast.dirs, 12 + 12 * 6 * 2 + 1);
+    }
+
+    #[test]
+    fn a_junction_deep_inside_is_counted_but_never_entered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(outside.join("more")).unwrap();
+        fs::write(outside.join("precious.bin"), vec![0u8; 5000]).unwrap();
+        fs::write(outside.join("more").join("also.bin"), vec![0u8; 7000]).unwrap();
+
+        let inside = tmp.path().join("inside");
+        let nested = inside.join("x").join("y");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("own.bin"), vec![0u8; 10]).unwrap();
+        // Two siblings so the parallel branch is taken as well.
+        fs::create_dir_all(inside.join("x").join("z")).unwrap();
+        junction(&nested.join("link"), &outside);
+
+        let size = tree_size(&inside, None);
+        assert_eq!(size.bytes, 10, "nothing behind the junction is measured");
+        assert_eq!(size.files, 2, "the file and the link itself");
+        assert_eq!(size.dirs, 3);
+        assert_eq!(size, slow_size(&inside));
+
+        // A junction as the root is one link, not a folder to measure.
+        let root_link = tmp.path().join("root-link");
+        junction(&root_link, &outside);
+        assert_eq!(
+            tree_size(&root_link, None),
+            TreeSize {
+                bytes: 0,
+                files: 1,
+                dirs: 0
+            }
+        );
+    }
+
+    #[test]
+    fn paths_beyond_260_characters_and_unicode_names_are_measured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut deep = tmp.path().to_path_buf();
+        for i in 0..10 {
+            deep.push(format!("ein-ziemlich-langer-ordnername-{i}-日本語-🍊"));
+        }
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("größe.dat"), vec![0u8; 4321]).unwrap();
+        assert!(deep.as_os_str().len() > 260);
+        let size = tree_size(tmp.path(), None);
+        assert_eq!(size.bytes, 4321);
+        assert_eq!(size.files, 1);
+        assert_eq!(size.dirs, 10);
+        assert_eq!(size, slow_size(tmp.path()));
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_read_counts_as_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("visible.bin"), vec![0u8; 100]).unwrap();
+        let locked = tmp.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::write(locked.join("hidden.bin"), vec![0u8; 900]).unwrap();
+        let user = std::env::var("USERNAME").unwrap_or_default();
+        let deny = std::process::Command::new("icacls")
+            .arg(&locked)
+            .args(["/deny", &format!("{user}:(RD)")])
+            .output();
+        let denied = deny.is_ok_and(|o| o.status.success()) && fs::read_dir(&locked).is_err();
+
+        let size = tree_size(tmp.path(), None);
+
+        // Always give the permission back so the temp folder can be removed.
+        let _ = std::process::Command::new("icacls")
+            .arg(&locked)
+            .args(["/remove:d", &user])
+            .output();
+        if !denied {
+            // Could not take the permission away (unusual account set-up):
+            // nothing to check here.
+            return;
+        }
+        assert_eq!(size.bytes, 100, "the unreadable folder adds nothing");
+        assert_eq!(size.files, 1);
+        assert_eq!(size.dirs, 1, "it is still counted as a folder");
+    }
+
+    #[test]
+    fn a_cancelled_walk_stops_and_reports_less() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..20 {
+            let dir = tmp.path().join(format!("d{i}"));
+            fs::create_dir(&dir).unwrap();
+            fs::write(dir.join("f.bin"), vec![0u8; 10]).unwrap();
+        }
+        let progress = Progress::new();
+        progress.cancel();
+        assert_eq!(tree_size(tmp.path(), Some(&progress)), TreeSize::default());
+        assert_eq!(tree_size(tmp.path(), None).bytes, 200);
+    }
+
+    #[test]
+    fn works_when_called_from_inside_the_walk_pool_and_from_plain_threads() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..8 {
+            let dir = tmp.path().join(format!("d{i}"));
+            fs::create_dir(&dir).unwrap();
+            fs::write(dir.join("f.bin"), vec![0u8; 25]).unwrap();
+        }
+        let root = tmp.path().to_path_buf();
+        // Nested use: scanners call tree_size from their own pool jobs.
+        let inside: Vec<u64> = fastdir::pool().install(|| {
+            (0..16)
+                .into_par_iter()
+                .map(|_| tree_size(&root, None).bytes)
+                .collect()
+        });
+        assert!(inside.iter().all(|&bytes| bytes == 200));
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let root = root.clone();
+                std::thread::spawn(move || tree_size(&root, None).bytes)
+            })
+            .collect();
+        for handle in handles {
+            assert_eq!(handle.join().unwrap(), 200);
+        }
     }
 }

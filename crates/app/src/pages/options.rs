@@ -24,6 +24,8 @@ const TABS: [&str; 7] = [
     "Smart cleaning",
     "About",
 ];
+/// Index of the About tab, where the app's own updates are shown.
+pub const ABOUT_TAB: usize = TABS.len() - 1;
 const WEEKDAYS: [&str; 7] = [
     "Monday",
     "Tuesday",
@@ -883,10 +885,13 @@ impl OptionsPage {
             });
         });
         ui.add_space(8.0);
-        ui.label(text::muted(
-            "Zest makes no network connections of its own, has no account and collects nothing. Software and driver updates go through Windows' own components.",
-            &pal,
-        ));
+        ui.add(
+            egui::Label::new(text::muted(
+                "Zest has no account and collects nothing. It goes online by itself in two cases only: once a day it asks its public repository for the number of the latest release, and on PCs without the Windows Package Manager it downloads Microsoft's public software catalog when you check for software updates. Both requests are anonymous and both can be switched off on this page. Software and driver updates themselves are downloaded by Windows' own components.",
+                &pal,
+            ))
+            .wrap(),
+        );
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if widgets::button(ui, &pal, "Project page").clicked() {
@@ -905,6 +910,43 @@ impl OptionsPage {
                 }
             });
         });
+        ui.add_space(16.0);
+        if cx.updater.about_ui(ui, &pal, cx.settings) {
+            cx.settings_changed = true;
+        }
+        ui.add_space(12.0);
+        setting(
+            ui,
+            &pal,
+            "Check for updates automatically",
+            "Once a day Zest asks its public repository for the number of the latest release. Nothing about you or this PC is sent.",
+            |ui| {
+                if widgets::switch(
+                    ui,
+                    &pal,
+                    &mut cx.settings.app_updates.check_automatically,
+                    "Check for updates automatically",
+                ) {
+                    cx.settings_changed = true;
+                }
+            },
+        );
+        setting(
+            ui,
+            &pal,
+            "Software catalog fallback",
+            "On PCs where the Windows Package Manager cannot be used, checking for software updates downloads Microsoft's public catalog instead (about 4 MB, at most twice a day). PCs with a working package manager never need it.",
+            |ui| {
+                if widgets::switch(
+                    ui,
+                    &pal,
+                    &mut cx.settings.general.catalog_fallback,
+                    "Software catalog fallback",
+                ) {
+                    cx.settings_changed = true;
+                }
+            },
+        );
         ui.add_space(16.0);
         ui.label(text::section("History"));
         if history.runs == 0 {

@@ -17,6 +17,7 @@ thiserror.workspace = true
 log.workspace = true
 chrono.workspace = true
 winreg.workspace = true
+rayon.workspace = true
 
 [dependencies.windows]
 workspace = true

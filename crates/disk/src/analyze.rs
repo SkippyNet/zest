@@ -16,7 +16,7 @@
 
 use crate::categories::{ExtensionKey, FileCategory};
 use crate::fastdir::{self, ATTR_SYSTEM, RawEntry};
-use crate::pool::{FxHashMap, FxHashSet, Shards, pool};
+use crate::pool::{FxHashMap, FxHashSet, Shards, walk_pool};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -576,7 +576,7 @@ pub fn analyze(options: &AnalyzeOptions, progress: &Progress) -> Result<Analysis
     };
 
     progress.set_total(0);
-    let tree: Vec<FolderNode> = pool().install(|| {
+    let tree: Vec<FolderNode> = walk_pool().install(|| {
         roots
             .par_iter()
             .map(|root| scan_dir(&ctx, root.clone(), root_name(root), 0))

@@ -3,11 +3,13 @@
 //! The feature crates each do one job. This crate ties them to the things an
 //! application needs around them: persistent [`settings`], a cleaning
 //! [`history`], one-call [`ops`] that turn settings into engine runs, the
-//! Windows integration for scheduled cleaning ([`schedule`]) and the
-//! background agent ([`autostart`], [`smart`]).
+//! Windows integration for scheduled cleaning ([`schedule`]), the
+//! background agent ([`autostart`], [`smart`]) and the check for new versions
+//! of Zest itself ([`app_update`]).
 
 #![cfg(windows)]
 
+pub mod app_update;
 pub mod autostart;
 pub mod health;
 pub mod history;

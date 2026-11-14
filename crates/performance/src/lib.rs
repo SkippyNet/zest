@@ -14,7 +14,8 @@
 //!   tracked so it can be undone, even after a crash.
 //!
 //! [`power`] adds power plans, a few read-only Windows settings and a
-//! hardware summary.
+//! hardware summary. [`boost`] combines the two into a temporary push for
+//! performance that undoes itself.
 //!
 //! # Example
 //!
@@ -35,6 +36,7 @@
 #![cfg(windows)]
 #![warn(missing_docs)]
 
+pub mod boost;
 pub mod classify;
 pub mod control;
 pub mod monitor;
@@ -44,6 +46,7 @@ mod security;
 mod sys;
 mod windowing;
 
+pub use boost::{Boost, BoostEnd, BoostStart, PlanOutcome, PowerPlans, SystemPowerPlans};
 pub use classify::{AppKind, BackgroundImpact, ProtectionReason, is_protected};
 pub use control::{
     ActionFailure, ActionReport, ControlEvent, ControlEventKind, ControlState, SleepMode,

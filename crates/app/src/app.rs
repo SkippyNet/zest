@@ -8,6 +8,7 @@ use crate::pages::{
     tools::ToolsPage, updates::UpdatesPage, wiper::WiperPage,
 };
 use crate::theme::{self, Palette, mix, text};
+use crate::updater::Updater;
 use crate::widgets::{self, Toasts};
 use eframe::egui::{self, Align, Layout, Margin, ScrollArea, Ui};
 use egui_phosphor::regular as icon;
@@ -48,8 +49,11 @@ pub struct App {
     page: Page,
     toasts: Toasts,
     elevated: bool,
+    updater: Updater,
     theme_override: Option<zest_engine::settings::Theme>,
     save_at: Option<Instant>,
+    /// The page the navigation rail last scrolled into view.
+    rail_revealed: Option<Page>,
     shots: Option<Shots>,
     clean: CleanPage,
     health: HealthPage,
@@ -104,8 +108,10 @@ impl App {
             page,
             toasts: Toasts::default(),
             elevated: elevation::is_elevated(),
+            updater: Updater::default(),
             theme_override: launch.theme,
             save_at: None,
+            rail_revealed: None,
             shots,
             clean: CleanPage::default(),
             health: HealthPage::default(),
@@ -132,6 +138,7 @@ impl App {
             app.clean.load_demo(crate::demo::clean_analysis());
             app.disk
                 .load_demo(crate::demo::drives(), crate::demo::disk_analysis());
+            app.updater.load_demo();
             app.privacy.load_demo();
             app.tools.load_demo();
             app.backup.load_demo();
@@ -199,9 +206,14 @@ impl App {
             .auto_shrink([false, false])
             .max_height(ui.available_height() - 96.0)
             .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.spacing_mut().item_spacing.y = 1.0;
+                // The rail holds more entries than fit a small window, so it
+                // scrolls; bring the current page into view when it changes
+                // (a button on another page, the command line, an update).
+                let reveal = self.rail_revealed != Some(self.page);
+                self.rail_revealed = Some(self.page);
                 for (heading, pages) in NAV_GROUPS {
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         ui.add_space(12.0);
                         ui.label(
@@ -210,8 +222,15 @@ impl App {
                                 .color(pal.text_faint),
                         );
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(1.0);
                     for page in pages {
+                        if reveal && self.page == *page {
+                            let row = egui::Rect::from_min_size(
+                                ui.cursor().min,
+                                egui::vec2(ui.available_width(), widgets::NAV_ITEM_HEIGHT),
+                            );
+                            ui.scroll_to_rect(row.expand2(egui::vec2(0.0, 40.0)), None);
+                        }
                         if widgets::nav_item(
                             ui,
                             &pal,
@@ -226,6 +245,7 @@ impl App {
                 }
             });
 
+        let mut open_about = false;
         ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             ui.add_space(12.0);
@@ -249,7 +269,25 @@ impl App {
             ) {
                 goto = Some(Page::Options);
             }
+            // A newer version of the app itself, offered until it is
+            // installed or skipped.
+            if let Some(version) = self.updater.offer(&self.settings)
+                && widgets::nav_item(
+                    ui,
+                    &pal,
+                    icon::ARROW_CIRCLE_UP,
+                    &format!("Update to {version}"),
+                    false,
+                    None,
+                )
+            {
+                goto = Some(Page::Options);
+                open_about = true;
+            }
         });
+        if open_about {
+            self.options.tab = crate::pages::options::ABOUT_TAB;
+        }
         if let Some(page) = goto {
             self.page = page;
         }
@@ -261,6 +299,7 @@ impl App {
             pal: &pal,
             settings: &mut self.settings,
             toasts: &mut self.toasts,
+            updater: &mut self.updater,
             elevated: self.elevated,
             goto: None,
             settings_changed: false,
@@ -457,10 +496,44 @@ impl App {
 }
 
 impl eframe::App for App {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // Pictures taken in screenshot mode must not depend on where the
+        // mouse happens to be: no hover highlights, no tooltips.
+        if self.shots.is_some() {
+            raw_input.events.retain(|event| {
+                !matches!(
+                    event,
+                    egui::Event::PointerMoved(_)
+                        | egui::Event::MouseMoved(_)
+                        | egui::Event::PointerButton { .. }
+                        | egui::Event::MouseWheel { .. }
+                )
+            });
+            raw_input.events.push(egui::Event::PointerGone);
+        }
+    }
+
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let pal = self.pal;
         self.drive_screenshots(&ctx);
+
+        // The app's own update check: at most once a day, in the
+        // background, and never during screenshot runs.
+        let tick = self.updater.tick(
+            &ctx,
+            &mut self.settings,
+            &mut self.toasts,
+            self.shots.is_none(),
+        );
+        if tick.settings_changed {
+            self.settings_changed(&ctx);
+        }
+        if tick.close {
+            // The installer or the new version takes over from here.
+            self.save_if_due(true);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
 
         egui::Panel::left("rail")
             .exact_size(214.0)
@@ -494,6 +567,7 @@ impl eframe::App for App {
         self.toasts.show(&ctx, &pal);
         self.remember_window(&ctx);
         self.save_if_due(false);
+        crate::gpu::frame_drawn();
     }
 
     fn on_exit(&mut self) {

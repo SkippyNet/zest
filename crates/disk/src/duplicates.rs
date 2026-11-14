@@ -22,7 +22,7 @@ use crate::fastdir::{
     self, ATTR_HIDDEN, ATTR_READ_ONLY, ATTR_SYSTEM, RawEntry, filetime_to_system, path_key,
     system_to_filetime,
 };
-use crate::pool::{FxHashMap, FxHashSet, Shards, pool};
+use crate::pool::{FxHashMap, FxHashSet, Shards, pool, walk_pool};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering as CmpOrdering;
@@ -555,7 +555,9 @@ pub fn find_duplicates(options: &DuplicateOptions, progress: &Progress) -> Resul
             .collect(),
         files_seen: AtomicU64::new(0),
     };
-    pool().install(|| {
+    // Listing folders runs on the small walk pool; the hashing further down
+    // uses every core.
+    walk_pool().install(|| {
         rayon::scope(|scope| {
             for root in &roots {
                 let root = root.clone();

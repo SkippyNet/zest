@@ -486,6 +486,21 @@ impl RegBackup {
         Ok(())
     }
 
+    /// Records that a value does not exist yet, so that restoring the
+    /// backup removes it again. Call this before *creating* a value.
+    pub fn add_absent_value(&mut self, key: &RegPath, name: &str) {
+        let _ = write!(self.body, "[{}]\r\n", key.full_name());
+        if name.is_empty() {
+            self.body.push('@');
+        } else {
+            self.body.push('"');
+            escape_reg_string(name, &mut self.body);
+            self.body.push('"');
+        }
+        self.body.push_str("=-\r\n\r\n");
+        self.entries += 1;
+    }
+
     /// Number of keys/values captured.
     pub fn len(&self) -> usize {
         self.entries
@@ -723,6 +738,26 @@ mod tests {
             victim.child("Deep").read_string("Leaf").as_deref(),
             Some("value")
         );
+    }
+
+    #[test]
+    fn restoring_a_backup_removes_values_that_did_not_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let scratch = Scratch::new("absent");
+        let key = scratch.0.open_write().unwrap();
+        key.set_value("Before", &1u32).unwrap();
+
+        let mut backup = RegBackup::at(tmp.path().join("absent.reg"));
+        backup.add_value(&scratch.0, "Before").unwrap();
+        backup.add_absent_value(&scratch.0, "Created \"later\"");
+        assert_eq!(backup.len(), 2);
+        let saved = backup.save().unwrap().expect("backup should be written");
+
+        key.set_value("Before", &2u32).unwrap();
+        key.set_value("Created \"later\"", &5u32).unwrap();
+        import_reg_file(&saved).unwrap();
+        assert_eq!(scratch.0.read_u32("Before"), Some(1));
+        assert_eq!(scratch.0.read_u32("Created \"later\""), None);
     }
 
     #[test]

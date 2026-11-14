@@ -217,6 +217,9 @@ pub struct GeneralSettings {
     pub show_system_entries: bool,
     /// Package ids the software updater never offers.
     pub ignored_updates: Vec<String>,
+    /// On PCs where the Windows Package Manager cannot be used, download
+    /// the public software catalog to find out-of-date programs.
+    pub catalog_fallback: bool,
 }
 
 impl Default for GeneralSettings {
@@ -226,6 +229,61 @@ impl Default for GeneralSettings {
             close_to_tray: false,
             show_system_entries: false,
             ignored_updates: Vec::new(),
+            catalog_fallback: true,
+        }
+    }
+}
+
+/// How Zest keeps itself up to date.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppUpdateSettings {
+    /// Look for a new version of Zest once a day.
+    pub check_automatically: bool,
+    /// When the last check ran, in seconds since 1970.
+    pub last_checked: Option<i64>,
+    /// The newest version the last check found.
+    pub latest_seen: Option<String>,
+    /// A version the user chose not to be reminded of.
+    pub skipped_version: Option<String>,
+}
+
+impl Default for AppUpdateSettings {
+    fn default() -> Self {
+        AppUpdateSettings {
+            check_automatically: true,
+            last_checked: None,
+            latest_seen: None,
+            skipped_version: None,
+        }
+    }
+}
+
+/// File backup choices.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BackupSettings {
+    /// Folder or drive that holds the backups.
+    pub destination: Option<PathBuf>,
+    /// Folders and files to back up.
+    pub sources: Vec<PathBuf>,
+    /// Patterns for what to leave out (see `zest_backup::exclude`).
+    pub excludes: Vec<String>,
+    /// How many snapshots to keep; older ones are removed after each backup.
+    /// Zero keeps them all.
+    pub keep_last: u32,
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        BackupSettings {
+            destination: None,
+            sources: Vec::new(),
+            excludes: zest_backup::DEFAULT_EXCLUDES
+                .iter()
+                .map(|p| (*p).to_owned())
+                .collect(),
+            keep_last: 10,
         }
     }
 }
@@ -265,6 +323,9 @@ pub struct Settings {
     pub smart: SmartSettings,
     pub health: HealthSettings,
     pub general: GeneralSettings,
+    /// Zest's own updates.
+    pub app_updates: AppUpdateSettings,
+    pub backup: BackupSettings,
     pub window: WindowState,
     /// Free-form per-feature state (sleep rules, duplicate finder options, ...)
     /// stored by the front end as JSON values.
@@ -282,6 +343,8 @@ impl Default for Settings {
             smart: SmartSettings::default(),
             health: HealthSettings::default(),
             general: GeneralSettings::default(),
+            app_updates: AppUpdateSettings::default(),
+            backup: BackupSettings::default(),
             window: WindowState::default(),
             extra: BTreeMap::new(),
         }
@@ -360,6 +423,7 @@ impl Settings {
         }
         self.window.width = self.window.width.clamp(900.0, 10_000.0);
         self.window.height = self.window.height.clamp(600.0, 10_000.0);
+        self.backup.keep_last = self.backup.keep_last.min(1000);
     }
 
     /// Reads a typed value from [`Settings::extra`].
@@ -400,6 +464,37 @@ mod tests {
         assert_eq!(loaded.extra::<u32>("answer"), 42);
         assert_eq!(loaded.extra::<u32>("missing"), 0);
         assert!(!tmp.path().join("nested").join("settings.json.tmp").exists());
+    }
+
+    #[test]
+    fn backup_choices_default_and_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("settings.json");
+        // A file written before backups existed.
+        std::fs::write(
+            &file,
+            r#"{"version": 1, "general": {"close_to_tray": true}}"#,
+        )
+        .unwrap();
+        let mut settings = Settings::load_from(&file);
+        assert_eq!(settings.backup, BackupSettings::default());
+        assert_eq!(settings.backup.keep_last, 10);
+        assert!(settings.backup.excludes.iter().any(|p| p == "*.tmp"));
+        assert!(settings.backup.destination.is_none());
+
+        settings.backup.destination = Some(PathBuf::from(r"E:\Backups"));
+        settings.backup.sources = vec![PathBuf::from(r"C:\Users\Alex\Documents")];
+        settings.backup.excludes.clear();
+        settings.backup.keep_last = 5_000;
+        settings.save_to(&file).unwrap();
+        let loaded = Settings::load_from(&file);
+        assert_eq!(loaded.backup.destination, settings.backup.destination);
+        assert_eq!(loaded.backup.sources, settings.backup.sources);
+        assert!(
+            loaded.backup.excludes.is_empty(),
+            "an emptied list stays empty"
+        );
+        assert_eq!(loaded.backup.keep_last, 1000, "clamped on load");
     }
 
     #[test]

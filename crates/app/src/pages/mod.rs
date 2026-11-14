@@ -183,6 +183,8 @@ pub struct Cx<'a> {
     pub settings: &'a mut Settings,
     /// Corner notifications.
     pub toasts: &'a mut Toasts,
+    /// Zest's own update check (shown on the About tab of the options).
+    pub updater: &'a mut crate::updater::Updater,
     /// Whether the app runs with administrator rights.
     pub elevated: bool,
     /// Set to navigate to another page.

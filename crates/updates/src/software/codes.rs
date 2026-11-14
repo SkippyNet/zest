@@ -16,6 +16,24 @@ const fn code(low: u32) -> i32 {
 pub(crate) const NO_APPLICATIONS_FOUND: i32 = code(0x0014);
 /// The installed version is already the newest applicable one.
 pub(crate) const UPDATE_NOT_APPLICABLE: i32 = code(0x002B);
+/// An option on the command line is unknown to this version.
+pub(crate) const INVALID_CL_ARGUMENTS: i32 = code(0x0002);
+/// An option is known but not supported in this context.
+pub(crate) const UNSUPPORTED_ARGUMENT: i32 = code(0x0059);
+/// The local copy of a package source is damaged.
+pub(crate) const INDEX_INTEGRITY_COMPROMISED: i32 = code(0x000A);
+/// The list of configured sources is damaged.
+pub(crate) const SOURCES_INVALID: i32 = code(0x000B);
+/// A source has never been downloaded and cannot be reached.
+pub(crate) const SOURCE_DATA_MISSING: i32 = code(0x000F);
+/// No package source is configured at all.
+pub(crate) const NO_SOURCES_DEFINED: i32 = code(0x0015);
+/// The source data failed its integrity check.
+pub(crate) const SOURCE_DATA_INTEGRITY_FAILURE: i32 = code(0x003F);
+/// A source could not be opened.
+pub(crate) const SOURCE_OPEN_FAILED: i32 = code(0x0045);
+/// One or more sources could not be opened.
+pub(crate) const FAILED_TO_OPEN_ALL_SOURCES: i32 = code(0x004B);
 /// The process was started through a console that was closed, or signalled.
 const CTRL_SIGNAL_RECEIVED: i32 = code(0x0005);
 const SHELLEXEC_INSTALL_FAILED: i32 = code(0x0006);
@@ -30,9 +48,9 @@ const MSSTORE_INSTALL_FAILED: i32 = code(0x001E);
 const UPDATE_ALL_HAS_FAILURE: i32 = code(0x002C);
 const INSTALLER_SECURITY_CHECK_FAILED: i32 = code(0x002D);
 const DOWNLOAD_SIZE_MISMATCH: i32 = code(0x002E);
-const BLOCKED_BY_POLICY: i32 = code(0x003A);
+pub(crate) const BLOCKED_BY_POLICY: i32 = code(0x003A);
 const PACKAGE_AGREEMENTS_NOT_ACCEPTED: i32 = code(0x0041);
-const SOURCE_AGREEMENTS_NOT_ACCEPTED: i32 = code(0x0046);
+pub(crate) const SOURCE_AGREEMENTS_NOT_ACCEPTED: i32 = code(0x0046);
 const MSI_INSTALL_FAILED: i32 = code(0x0049);
 const UPGRADE_VERSION_NOT_NEWER: i32 = code(0x004F);
 const UPGRADE_VERSION_UNKNOWN: i32 = code(0x0050);

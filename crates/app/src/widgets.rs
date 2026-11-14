@@ -1035,6 +1035,9 @@ pub fn legends(ui: &mut Ui, pal: &Palette, items: &[(Color32, &str, String)]) {
 
 // ── Navigation rail ──────────────────────────────────────────────────
 
+/// Height of one entry of the navigation rail.
+pub const NAV_ITEM_HEIGHT: f32 = 32.0;
+
 /// One entry of the navigation rail. Returns true when clicked.
 pub fn nav_item(
     ui: &mut Ui,
@@ -1044,7 +1047,8 @@ pub fn nav_item(
     selected: bool,
     badge: Option<&str>,
 ) -> bool {
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), NAV_ITEM_HEIGHT), Sense::click());
     response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, selected, label));
     if ui.is_rect_visible(rect) {
         let radius = CornerRadius::same(RADIUS);
@@ -1052,8 +1056,8 @@ pub fn nav_item(
             ui.painter()
                 .rect_filled(rect, radius, mix(pal.rail, pal.text, 0.09));
             let marker = Rect::from_min_max(
-                pos2(rect.left(), rect.top() + 9.0),
-                pos2(rect.left() + 3.0, rect.bottom() - 9.0),
+                pos2(rect.left(), rect.top() + 8.0),
+                pos2(rect.left() + 3.0, rect.bottom() - 8.0),
             );
             ui.painter()
                 .rect_filled(marker, CornerRadius::same(2), pal.accent);

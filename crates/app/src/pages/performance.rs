@@ -11,8 +11,8 @@ use zest_engine::core::fmt::{format_bytes, format_duration};
 use zest_engine::performance::control::default_journal_path;
 use zest_engine::performance::power::{self, PowerPlan};
 use zest_engine::performance::{
-    AppUsage, BackgroundImpact, ControlState, Sampler, SleepMode, SleepRule, SleepRules,
-    SystemSnapshot, apply_rules, trim_all,
+    AppUsage, BackgroundImpact, Boost, BoostEnd, BoostStart, ControlState, PlanOutcome, Sampler,
+    SleepMode, SleepRule, SleepRules, SystemSnapshot, apply_rules, trim_all,
 };
 
 const SAMPLE_EVERY: Duration = Duration::from_millis(1500);
@@ -29,6 +29,9 @@ pub struct PerformancePage {
     tab: usize,
     freeze: bool,
     plans: Option<Vec<PowerPlan>>,
+    boost: Boost,
+    /// What the running boost changed, in words, for the banner.
+    boost_summary: String,
 }
 
 impl Default for PerformancePage {
@@ -43,6 +46,8 @@ impl Default for PerformancePage {
             tab: 0,
             freeze: false,
             plans: None,
+            boost: Boost::new(),
+            boost_summary: String::new(),
         }
     }
 }
@@ -58,9 +63,18 @@ impl PerformancePage {
         let rules = self
             .rules
             .get_or_insert_with(|| cx.settings.extra::<SleepRules>(RULES_KEY));
+        // A boost that an earlier run could not finish (a crash, a power
+        // cut) is undone before anything else happens.
+        if let Some(end) = self.boost.recover(&mut self.control) {
+            self.plans = None;
+            cx.toasts.info(format!(
+                "A boost that was cut short has been undone. {}",
+                describe_end(&end)
+            ));
+        }
         // Sampling costs a few milliseconds, so it only runs when it is
-        // needed: while the page is open, or while rules are active.
-        if !visible && rules.is_empty() {
+        // needed: while the page is open, or while rules or a boost are active.
+        if !visible && rules.is_empty() && !self.boost.is_on() {
             return;
         }
         let due = self
@@ -125,10 +139,32 @@ impl PerformancePage {
         self.save_rules(cx);
     }
 
+    /// Switches the boost on and says what it did.
+    fn start_boost(&mut self, cx: &mut Cx, snapshot: &SystemSnapshot) {
+        let started = self.boost.start(&mut self.control, snapshot);
+        self.plans = None;
+        if let Some(e) = &started.plan_error {
+            log::warn!("boost could not switch the power plan: {e}");
+        }
+        if started.apps.is_empty() && started.plan.is_none() {
+            // Nothing changed, so there is nothing to keep switched on.
+            self.boost.stop(&mut self.control);
+            cx.toasts.info(
+                "Nothing to boost right now: no background app is worth putting to sleep and this PC has no faster power plan.",
+            );
+            return;
+        }
+        self.boost_summary = describe_start(&started);
+        cx.toasts
+            .good(format!("Boost is on. {}", self.boost_summary));
+    }
+
     /// Draws the page.
     pub fn ui(&mut self, ui: &mut Ui, cx: &mut Cx) {
         let pal = *cx.pal;
         let mut trim = false;
+        // `Some(true)` switches the boost on, `Some(false)` off.
+        let mut boost: Option<bool> = None;
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 widgets::page_header(
@@ -140,6 +176,13 @@ impl PerformancePage {
             });
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 ui.add_space(2.0);
+                if !self.boost.is_on()
+                    && widgets::primary_button(ui, &pal, "Boost")
+                        .on_hover_text("Puts the background apps marked with a star to sleep and selects the fastest power plan this PC has. Ending the boost, or closing Zest, puts everything back.")
+                        .clicked()
+                {
+                    boost = Some(true);
+                }
                 if widgets::button(ui, &pal, "Free up memory")
                     .on_hover_text("Asks background apps to release memory they are not using. Windows gives it back to them as needed.")
                     .clicked()
@@ -253,6 +296,39 @@ impl PerformancePage {
             Sense::hover(),
         );
         ui.add_space(6.0);
+
+        if self.boost.is_on() {
+            if widgets::banner(
+                ui,
+                &pal,
+                Tone::Accent,
+                icon::LIGHTNING,
+                &format!(
+                    "Boost is on. {} Ending it, or closing Zest, puts everything back.",
+                    self.boost_summary
+                ),
+                Some("End boost"),
+            ) {
+                boost = Some(false);
+            }
+            ui.add_space(6.0);
+        }
+        match boost {
+            Some(true) => self.start_boost(cx, &snapshot),
+            Some(false) => {
+                let end = self.boost.stop(&mut self.control);
+                self.plans = None;
+                match &end.plan {
+                    PlanOutcome::Failed(e) => cx.toasts.error(format!(
+                        "Boost ended, but the power plan could not be switched back: {e}"
+                    )),
+                    _ => cx
+                        .toasts
+                        .info(format!("Boost ended. {}", describe_end(&end))),
+                }
+            }
+            None => {}
+        }
 
         // Sleep rules are enforced by whichever part of Zest is running.
         let has_rules = self.rules.as_ref().is_some_and(|r| !r.is_empty());
@@ -397,6 +473,50 @@ impl PerformancePage {
     }
 }
 
+/// Says what a boost changed, e.g. `3 background apps are asleep and the
+/// power plan is High performance.`
+fn describe_start(started: &BoostStart) -> String {
+    let apps = match started.apps.len() {
+        0 => None,
+        1 => Some(format!("{} is asleep", started.apps[0])),
+        count => Some(format!("{count} background apps are asleep")),
+    };
+    match (apps, &started.plan) {
+        (Some(apps), Some(plan)) => format!("{apps} and the power plan is {plan}."),
+        (Some(apps), None) => format!("{apps}."),
+        (None, Some(plan)) => format!("The power plan is {plan}."),
+        (None, None) => String::new(),
+    }
+}
+
+/// Says what ending a boost put back.
+fn describe_end(end: &BoostEnd) -> String {
+    let apps = match end.apps_woken {
+        0 => None,
+        1 => Some("1 app is awake again".to_owned()),
+        count => Some(format!("{count} apps are awake again")),
+    };
+    let plan = match &end.plan {
+        PlanOutcome::Untouched => None,
+        PlanOutcome::Restored => Some("the power plan is back to what it was".to_owned()),
+        PlanOutcome::ChangedMeanwhile => {
+            Some("the power plan you picked in the meantime was kept".to_owned())
+        }
+        PlanOutcome::Failed(e) => Some(format!("the power plan could not be switched back ({e})")),
+    };
+    let sentence = match (apps, plan) {
+        (Some(apps), Some(plan)) => format!("{apps} and {plan}."),
+        (Some(only), None) | (None, Some(only)) => format!("{only}."),
+        (None, None) => return "Nothing needed putting back.".to_owned(),
+    };
+    // Sentence case: the plan clause starts in lower case on its own.
+    let mut chars = sentence.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => sentence,
+    }
+}
+
 fn sparkline(ui: &Ui, pal: &Palette, rect: Rect, values: &VecDeque<f32>) {
     if values.len() < 2 || rect.width() < 20.0 {
         return;
@@ -420,4 +540,50 @@ fn sparkline(ui: &Ui, pal: &Palette, rect: Rect, values: &VecDeque<f32>) {
         Stroke::new(1.0, mix(pal.surface, pal.line, 0.8)),
     );
     ui.painter().line(points, Stroke::new(1.6, pal.accent));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_boost_is_described_in_words() {
+        let start = |apps: &[&str], plan: Option<&str>| BoostStart {
+            apps: apps.iter().map(|a| (*a).to_owned()).collect(),
+            plan: plan.map(str::to_owned),
+            ..BoostStart::default()
+        };
+        assert_eq!(
+            describe_start(&start(&["Chat", "Music", "Sync"], Some("High performance"))),
+            "3 background apps are asleep and the power plan is High performance."
+        );
+        assert_eq!(describe_start(&start(&["Chat"], None)), "Chat is asleep.");
+        assert_eq!(
+            describe_start(&start(&[], Some("Ultimate Performance"))),
+            "The power plan is Ultimate Performance."
+        );
+        assert_eq!(describe_start(&start(&[], None)), "");
+
+        let end = |apps_woken, plan| BoostEnd { apps_woken, plan };
+        assert_eq!(
+            describe_end(&end(3, PlanOutcome::Restored)),
+            "3 apps are awake again and the power plan is back to what it was."
+        );
+        assert_eq!(
+            describe_end(&end(1, PlanOutcome::Untouched)),
+            "1 app is awake again."
+        );
+        assert_eq!(
+            describe_end(&end(0, PlanOutcome::ChangedMeanwhile)),
+            "The power plan you picked in the meantime was kept."
+        );
+        assert_eq!(
+            describe_end(&end(0, PlanOutcome::Untouched)),
+            "Nothing needed putting back."
+        );
+        assert!(
+            describe_end(&end(2, PlanOutcome::Failed("denied".to_owned())))
+                .ends_with("could not be switched back (denied).")
+        );
+    }
 }

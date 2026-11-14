@@ -6,6 +6,21 @@
 //! come from the publisher-verified package source and pass the package
 //! manager's own hash verification before anything runs.
 //!
+//! # Where the list of software comes from
+//!
+//! Zest carries no list of programs of its own. The package manager matches
+//! whatever is installed on *this* PC against Microsoft's community catalog
+//! (many thousands of packages, maintained in the open and refreshed several
+//! times a day), so the updater works the same on every PC whatever is
+//! installed there, and learns about new programs without a new version of
+//! Zest.
+//!
+//! Where the package manager is missing, too old, switched off or broken,
+//! [`check`] says so with a specific [`Problem`] and, unless that is
+//! switched off, falls back to reading the same public catalog directly
+//! ([`catalog`]). The fallback can tell which programs are out of date; it
+//! never installs anything.
+//!
 //! # Typical flow
 //!
 //! ```no_run
@@ -33,8 +48,15 @@
 //! package id ever arrive shortened, it is completed from the package
 //! manager's JSON export before it is offered for upgrade.
 
+pub mod catalog;
 mod codes;
+mod normalize;
+mod problem;
 mod table;
+mod version;
+
+pub use catalog::{Catalog, CatalogError, CatalogUpdate, InstalledProgram, MatchedBy};
+pub use problem::{Problem, Remedy};
 
 use crate::exec;
 use serde::{Deserialize, Serialize};
@@ -79,12 +101,24 @@ fn packaged_winget() -> Option<PathBuf> {
     candidates.pop()
 }
 
+/// Environment variable naming the package manager executable to use.
+///
+/// Meant for diagnostics and unusual installations. When it is set, nothing
+/// else is searched: a path that does not exist makes Zest behave exactly as
+/// it does on a PC without the package manager.
+pub const WINGET_PATH_ENV: &str = "ZEST_WINGET_PATH";
+
 /// Locates `winget.exe`.
 ///
 /// Looks at the per-user app execution alias first
 /// (`%LOCALAPPDATA%\Microsoft\WindowsApps`), then at every folder on `PATH`,
-/// then at the packaged installation itself.
+/// then at the packaged installation itself. [`WINGET_PATH_ENV`] overrides
+/// the search.
 pub fn winget_path() -> Option<PathBuf> {
+    if let Some(custom) = std::env::var_os(WINGET_PATH_ENV) {
+        let custom = PathBuf::from(custom);
+        return link_exists(&custom).then_some(custom);
+    }
     let alias = zest_core::paths::UserDirs::current()
         .local
         .join("Microsoft")
@@ -113,8 +147,11 @@ pub fn is_available() -> bool {
 ///
 /// Returns `None` when it is missing or does not answer.
 pub fn source_version() -> Option<String> {
-    let exe = winget_path()?;
-    let output = process::run_capture(&exe, ["--version"]).ok()?;
+    version_of(&winget_path()?)
+}
+
+fn version_of(exe: &std::path::Path) -> Option<String> {
+    let output = process::run_capture(exe, ["--version"]).ok()?;
     if !output.success() {
         return None;
     }
@@ -162,6 +199,10 @@ pub struct CheckOptions {
     pub ignore_ids: Vec<String>,
     /// Give up when the package manager has not answered after this long.
     pub timeout_secs: u64,
+    /// When the package manager cannot be used, download the public
+    /// catalog and compare it with the installed programs instead.
+    /// Only [`check`] acts on this.
+    pub catalog_fallback: bool,
 }
 
 impl Default for CheckOptions {
@@ -171,6 +212,7 @@ impl Default for CheckOptions {
             include_pinned: false,
             ignore_ids: Vec::new(),
             timeout_secs: 180,
+            catalog_fallback: true,
         }
     }
 }
@@ -209,6 +251,23 @@ impl SoftwareUpdate {
     pub fn installed_version_known(&self) -> bool {
         let version = self.installed_version.trim();
         !(version.is_empty() || version.starts_with('<') || version.eq_ignore_ascii_case("unknown"))
+    }
+}
+
+impl From<CatalogUpdate> for SoftwareUpdate {
+    /// Presents a catalog finding in the shape of a package manager entry,
+    /// for summaries that only count and name updates. The catalog is the
+    /// package manager's community source, so that is the source named.
+    fn from(update: CatalogUpdate) -> Self {
+        SoftwareUpdate {
+            name: update.name,
+            id: update.id,
+            installed_version: update.installed_version,
+            available_version: update.available_version,
+            source: "winget".to_owned(),
+            requires_explicit_upgrade: false,
+            id_truncated: false,
+        }
     }
 }
 
@@ -373,6 +432,144 @@ fn full_package_ids(exe: &std::path::Path, progress: &Progress) -> Vec<(String, 
     ids
 }
 
+/// What one run of the listing command produced.
+#[derive(Clone, Debug)]
+enum RunOutcome {
+    /// It ran to the end.
+    Finished {
+        code: Option<i32>,
+        stdout: String,
+        stderr: String,
+    },
+    /// It did not answer within the allowed time.
+    TimedOut,
+    /// Windows could not start it.
+    NotStarted(String),
+    /// The user cancelled.
+    Cancelled,
+}
+
+/// Why no list came out of the package manager.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ListFailure {
+    Cancelled,
+    Problem(Problem),
+}
+
+/// The command lines tried in turn until the package manager accepts one.
+/// Older versions know fewer options; the last attempt uses none at all.
+fn listing_attempts(options: &CheckOptions) -> Vec<Vec<String>> {
+    let mut reduced = vec![
+        "upgrade".to_owned(),
+        "--accept-source-agreements".to_owned(),
+    ];
+    if options.include_unknown {
+        reduced.push("--include-unknown".to_owned());
+    }
+    vec![
+        check_command_args(options),
+        reduced,
+        vec!["upgrade".to_owned()],
+    ]
+}
+
+/// Runs the listing through `run`, stepping down to simpler command lines
+/// when the package manager does not know an option, and turns every way it
+/// can fail into a specific [`Problem`].
+fn list_with(
+    run: &mut dyn FnMut(&[String]) -> RunOutcome,
+    version: &dyn Fn() -> Option<String>,
+    options: &CheckOptions,
+) -> std::result::Result<Vec<SoftwareUpdate>, ListFailure> {
+    use problem::ExitMeaning;
+    for args in listing_attempts(options) {
+        let (code, stdout, stderr) = match run(&args) {
+            RunOutcome::Finished {
+                code,
+                stdout,
+                stderr,
+            } => (code, stdout, stderr),
+            RunOutcome::Cancelled => return Err(ListFailure::Cancelled),
+            RunOutcome::TimedOut => return Err(ListFailure::Problem(Problem::TimedOut)),
+            RunOutcome::NotStarted(detail) => {
+                return Err(ListFailure::Problem(Problem::NotWorking { detail }));
+            }
+        };
+        let updates = parse_upgrade_listing(&stdout);
+        let detail = || tail(&format!("{stdout}\n{stderr}"), 4);
+        let failure = match problem::exit_meaning(code) {
+            ExitMeaning::Fine => return Ok(updates),
+            // This version does not know one of the options: ask more simply.
+            ExitMeaning::UnknownOption => continue,
+            ExitMeaning::Policy => Problem::BlockedByPolicy,
+            ExitMeaning::Agreements => Problem::AgreementsNotAccepted,
+            // One source failing does not spoil what the others returned.
+            ExitMeaning::Sources | ExitMeaning::Other if !updates.is_empty() => return Ok(updates),
+            ExitMeaning::Sources => Problem::SourcesUnavailable { detail: detail() },
+            ExitMeaning::Other => Problem::Failed {
+                code,
+                detail: detail(),
+            },
+        };
+        return Err(ListFailure::Problem(failure));
+    }
+    // Not even the plain command was understood.
+    Err(ListFailure::Problem(Problem::TooOld { version: version() }))
+}
+
+fn list_from_package_manager(
+    options: &CheckOptions,
+    progress: &Progress,
+) -> std::result::Result<Vec<SoftwareUpdate>, ListFailure> {
+    let Some(exe) = winget_path() else {
+        return Err(ListFailure::Problem(Problem::NotInstalled));
+    };
+    list_at(&exe, options, progress)
+}
+
+/// Lists upgrades with the package manager executable at `exe`.
+fn list_at(
+    exe: &std::path::Path,
+    options: &CheckOptions,
+    progress: &Progress,
+) -> std::result::Result<Vec<SoftwareUpdate>, ListFailure> {
+    let timeout = Duration::from_secs(options.timeout_secs.max(10));
+    let mut run = |args: &[String]| -> RunOutcome {
+        let mut command = process::hidden_command(exe);
+        command.args(args);
+        match exec::run_cancellable(command, progress, Some(timeout), &mut |_| {}) {
+            Ok(output) => RunOutcome::Finished {
+                code: output.code,
+                stdout: output.stdout,
+                stderr: output.stderr,
+            },
+            Err(Error::Cancelled) => RunOutcome::Cancelled,
+            // The runner's only command error is the timeout.
+            Err(Error::Command(_)) => RunOutcome::TimedOut,
+            Err(error) => RunOutcome::NotStarted(error.to_string()),
+        }
+    };
+    let mut updates = list_with(&mut run, &|| version_of(exe), options)?;
+
+    if updates.iter().any(|u| u.id_truncated) {
+        progress.set_message("Resolving package names…");
+        let known = full_package_ids(exe, progress);
+        if progress.is_cancelled() {
+            return Err(ListFailure::Cancelled);
+        }
+        resolve_truncated_ids(&mut updates, &known);
+    }
+    Ok(finish_listing(updates, &options.ignore_ids))
+}
+
+fn summary_message(count: usize) -> String {
+    match count {
+        0 => "All software is up to date".to_owned(),
+        1 => "1 software update available".to_owned(),
+        n => format!("{n} software updates available"),
+    }
+}
+
 /// Asks the package manager which installed programs can be upgraded.
 ///
 /// This only reads: it refreshes the package manager's own source index and
@@ -381,6 +578,9 @@ fn full_package_ids(exe: &std::path::Path, progress: &Progress) -> Vec<(String, 
 /// The result is sorted by name. Entries whose id is on
 /// [`CheckOptions::ignore_ids`] are left out.
 ///
+/// Front ends should prefer [`check`], which reports *why* the package
+/// manager cannot be used and can fall back to the public catalog.
+///
 /// # Errors
 ///
 /// * [`Error::NotFound`] with [`MISSING_MESSAGE`] when the package manager is
@@ -388,42 +588,174 @@ fn full_package_ids(exe: &std::path::Path, progress: &Progress) -> Vec<(String, 
 /// * [`Error::Cancelled`] when `progress` is cancelled.
 /// * [`Error::Command`] when the package manager fails or times out.
 pub fn check_updates(options: &CheckOptions, progress: &Progress) -> Result<Vec<SoftwareUpdate>> {
-    let exe = winget_path().ok_or_else(|| Error::NotFound(MISSING_MESSAGE.to_owned()))?;
     progress.set_message("Checking for software updates…");
     progress.check()?;
+    match list_from_package_manager(options, progress) {
+        Ok(updates) => {
+            progress.set_message(summary_message(updates.len()));
+            Ok(updates)
+        }
+        Err(ListFailure::Cancelled) => Err(Error::Cancelled),
+        Err(ListFailure::Problem(Problem::NotInstalled)) => {
+            Err(Error::NotFound(MISSING_MESSAGE.to_owned()))
+        }
+        Err(ListFailure::Problem(problem)) => {
+            let detail = problem
+                .detail()
+                .map(|d| format!(" ({d})"))
+                .unwrap_or_default();
+            Err(Error::Command(format!(
+                "{}. {}{detail}",
+                problem.title(),
+                problem.explanation()
+            )))
+        }
+    }
+}
 
-    let mut command = process::hidden_command(&exe);
-    command.args(check_command_args(options));
-    let timeout = Duration::from_secs(options.timeout_secs.max(10));
-    let output = exec::run_cancellable(command, progress, Some(timeout), &mut |_| {})?;
+/// Where a list of software updates came from, and how much can be done
+/// with it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Listing {
+    /// From the package manager. These updates can be installed with
+    /// [`upgrade`]. An empty list means everything is up to date.
+    PackageManager(Vec<SoftwareUpdate>),
+    /// The package manager cannot be used on this PC, so the public catalog
+    /// was compared with the installed programs instead. The list is for
+    /// information: installing needs the package manager.
+    Catalog {
+        /// Why the package manager was not used.
+        problem: Problem,
+        /// Programs for which the catalog lists a newer version.
+        updates: Vec<CatalogUpdate>,
+        /// Number of packages the catalog knows, for the user's confidence.
+        packages_in_catalog: usize,
+    },
+    /// Neither the package manager nor the catalog could be used. This is
+    /// *not* "up to date": nothing is known.
+    Unavailable {
+        /// Why the package manager was not used.
+        problem: Problem,
+        /// Why the catalog could not be used either; `None` when the
+        /// fallback is switched off.
+        catalog_error: Option<String>,
+    },
+}
 
-    let mut updates = parse_upgrade_listing(&output.stdout);
-    let benign = matches!(
-        output.code,
-        Some(0) | Some(codes::UPDATE_NOT_APPLICABLE) | Some(codes::NO_APPLICATIONS_FOUND)
-    );
-    if updates.is_empty() && !benign {
-        let detail = tail(&format!("{}\n{}", output.stdout, output.stderr), 4);
-        return Err(Error::Command(format!(
-            "the package manager could not list updates ({}): {detail}",
-            format_exit(output.code)
-        )));
+impl Listing {
+    /// Number of updates found, from either source.
+    pub fn len(&self) -> usize {
+        match self {
+            Listing::PackageManager(updates) => updates.len(),
+            Listing::Catalog { updates, .. } => updates.len(),
+            Listing::Unavailable { .. } => 0,
+        }
     }
 
-    if updates.iter().any(|u| u.id_truncated) {
-        progress.set_message("Resolving package names…");
-        let known = full_package_ids(&exe, progress);
-        progress.check()?;
-        resolve_truncated_ids(&mut updates, &known);
+    /// True when no update was found. Check [`Listing::problem`] before
+    /// telling anyone that everything is current.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    let updates = finish_listing(updates, &options.ignore_ids);
-    progress.set_message(match updates.len() {
-        0 => "All software is up to date".to_owned(),
-        1 => "1 software update available".to_owned(),
-        n => format!("{n} software updates available"),
-    });
-    Ok(updates)
+    /// What kept the package manager from being used, if anything did.
+    pub fn problem(&self) -> Option<&Problem> {
+        match self {
+            Listing::PackageManager(_) => None,
+            Listing::Catalog { problem, .. } | Listing::Unavailable { problem, .. } => {
+                Some(problem)
+            }
+        }
+    }
+}
+
+/// Compares the public catalog with the programs registered on this PC.
+///
+/// This is the fallback [`check`] uses; it is public so that it can be run
+/// on its own, for diagnostics or on request.
+///
+/// # Errors
+///
+/// See [`CatalogError`].
+pub fn check_with_catalog(
+    options: &CheckOptions,
+    progress: &Progress,
+) -> std::result::Result<(Vec<CatalogUpdate>, usize), CatalogError> {
+    let catalog = Catalog::load(progress)?;
+    if progress.is_cancelled() {
+        return Err(CatalogError::Cancelled);
+    }
+    progress.set_message("Comparing installed programs with the software catalog…");
+    let installed: Vec<InstalledProgram> =
+        zest_system::apps::list_installed(&zest_system::apps::ListOptions::default())
+            .iter()
+            .map(InstalledProgram::from)
+            .collect();
+    let ignored: Vec<String> = options
+        .ignore_ids
+        .iter()
+        .map(|id| id.trim().to_lowercase())
+        .collect();
+    let mut updates = catalog.updates_for(&installed);
+    updates.retain(|update| !ignored.contains(&update.id.to_lowercase()));
+    Ok((updates, catalog.package_count()))
+}
+
+/// Finds out which installed programs have a newer version, on any PC.
+///
+/// The package manager is asked first. When it cannot be used, the reason
+/// is reported as a [`Problem`] and, if [`CheckOptions::catalog_fallback`]
+/// is on, the public catalog is downloaded (one anonymous request, cached
+/// for half a day) and compared with the programs registered on this PC.
+///
+/// Nothing is installed or changed either way.
+///
+/// # Errors
+///
+/// Only [`Error::Cancelled`]. Every other difficulty is part of the
+/// returned [`Listing`], so that it can be explained to the user.
+pub fn check(options: &CheckOptions, progress: &Progress) -> Result<Listing> {
+    progress.set_message("Checking for software updates…");
+    progress.check()?;
+    let problem = match list_from_package_manager(options, progress) {
+        Ok(updates) => {
+            progress.set_message(summary_message(updates.len()));
+            return Ok(Listing::PackageManager(updates));
+        }
+        Err(ListFailure::Cancelled) => return Err(Error::Cancelled),
+        Err(ListFailure::Problem(problem)) => problem,
+    };
+    log::warn!("the package manager cannot be used: {problem:?}");
+    if !options.catalog_fallback {
+        progress.set_message(problem.title());
+        return Ok(Listing::Unavailable {
+            problem,
+            catalog_error: None,
+        });
+    }
+    match check_with_catalog(options, progress) {
+        Ok((updates, packages_in_catalog)) => {
+            progress.set_message(summary_message(updates.len()));
+            log::info!(
+                "software catalog: {} of {packages_in_catalog} packages are newer than what is installed",
+                updates.len()
+            );
+            Ok(Listing::Catalog {
+                problem,
+                updates,
+                packages_in_catalog,
+            })
+        }
+        Err(CatalogError::Cancelled) => Err(Error::Cancelled),
+        Err(error) => {
+            log::warn!("the software catalog cannot be used: {error:?}");
+            progress.set_message(problem.title());
+            Ok(Listing::Unavailable {
+                problem,
+                catalog_error: Some(error.to_string()),
+            })
+        }
+    }
 }
 
 /// Options for [`upgrade`] and [`upgrade_all`].
@@ -1016,5 +1348,386 @@ mod tests {
         assert_eq!(outcomes.len(), 2);
         assert!(outcomes.iter().all(|o| o.status == UpgradeStatus::Skipped));
         assert!(outcomes.iter().all(|o| o.exit_code.is_none()));
+    }
+}
+
+#[cfg(test)]
+mod listing_tests {
+    //! How the listing copes with package managers unlike the one on the
+    //! development PC: older, switched off, offline, or silent.
+
+    use super::*;
+
+    fn finished(code: i32, stdout: &str) -> RunOutcome {
+        RunOutcome::Finished {
+            code: Some(code),
+            stdout: stdout.to_owned(),
+            stderr: String::new(),
+        }
+    }
+
+    /// Runs the listing against a scripted package manager and records the
+    /// command lines it was asked.
+    fn list(
+        script: impl Fn(&[String]) -> RunOutcome,
+    ) -> (
+        std::result::Result<Vec<SoftwareUpdate>, ListFailure>,
+        Vec<Vec<String>>,
+    ) {
+        let mut asked = Vec::new();
+        let mut run = |args: &[String]| {
+            asked.push(args.to_vec());
+            script(args)
+        };
+        let version = || Some("1.0.11692".to_owned());
+        let result = list_with(&mut run, &version, &CheckOptions::default());
+        (result, asked)
+    }
+
+    fn problem(result: std::result::Result<Vec<SoftwareUpdate>, ListFailure>) -> Problem {
+        match result {
+            Err(ListFailure::Problem(problem)) => problem,
+            other => panic!("expected a problem, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_current_package_manager_is_asked_once() {
+        let (result, asked) = list(|_| finished(0, &table::fixtures::typical()));
+        assert_eq!(result.unwrap().len(), 7);
+        assert_eq!(asked.len(), 1);
+        assert!(asked[0].contains(&"--disable-interactivity".to_owned()));
+
+        // Nothing to update is success with an empty list, whichever of the
+        // two "nothing found" codes the package manager uses.
+        for code in [
+            0,
+            codes::NO_APPLICATIONS_FOUND,
+            codes::UPDATE_NOT_APPLICABLE,
+        ] {
+            let (result, _) = list(|_| finished(code, "No installed package found.\r\n"));
+            assert_eq!(result, Ok(Vec::new()), "code {code}");
+        }
+    }
+
+    #[test]
+    fn an_older_package_manager_is_asked_more_simply() {
+        // Knows the listing but not the newest option.
+        let (result, asked) = list(|args| {
+            if args.iter().any(|a| a == "--disable-interactivity") {
+                finished(
+                    codes::INVALID_CL_ARGUMENTS,
+                    "Argument name was not recognized for the current command: --disable-interactivity\r\n",
+                )
+            } else {
+                finished(0, &table::fixtures::typical())
+            }
+        });
+        assert_eq!(result.unwrap().len(), 7);
+        assert_eq!(asked.len(), 2);
+        assert_eq!(asked[1], ["upgrade", "--accept-source-agreements"]);
+
+        // Knows no option at all.
+        let (result, asked) = list(|args| {
+            if args.len() > 1 {
+                finished(codes::INVALID_CL_ARGUMENTS, "")
+            } else {
+                finished(0, &table::fixtures::typical())
+            }
+        });
+        assert_eq!(result.unwrap().len(), 7);
+        assert_eq!(asked.last().unwrap(), &["upgrade"]);
+
+        // Does not even know the listing: too old, and the version is named.
+        let (result, asked) = list(|_| finished(codes::INVALID_CL_ARGUMENTS, ""));
+        assert_eq!(asked.len(), 3);
+        assert_eq!(
+            problem(result),
+            Problem::TooOld {
+                version: Some("1.0.11692".to_owned())
+            }
+        );
+        let (result, _) = list(|_| finished(codes::UNSUPPORTED_ARGUMENT, ""));
+        assert!(matches!(problem(result), Problem::TooOld { .. }));
+    }
+
+    #[test]
+    fn every_way_of_failing_has_its_own_problem() {
+        let (result, asked) = list(|_| finished(codes::BLOCKED_BY_POLICY, "Blocked by policy\r\n"));
+        assert_eq!(problem(result), Problem::BlockedByPolicy);
+        assert_eq!(asked.len(), 1, "a policy block is not retried");
+
+        let (result, _) = list(|_| finished(codes::SOURCE_AGREEMENTS_NOT_ACCEPTED, ""));
+        assert_eq!(problem(result), Problem::AgreementsNotAccepted);
+
+        for code in [
+            codes::SOURCE_DATA_MISSING,
+            codes::SOURCE_OPEN_FAILED,
+            codes::FAILED_TO_OPEN_ALL_SOURCES,
+            codes::NO_SOURCES_DEFINED,
+            codes::SOURCES_INVALID,
+            codes::INDEX_INTEGRITY_COMPROMISED,
+            codes::SOURCE_DATA_INTEGRITY_FAILURE,
+        ] {
+            let (result, _) = list(|_| {
+                finished(
+                    code,
+                    "Failed in attempting to update the source: winget\r\nFailed when opening source(s); try the source reset command if the problem persists.\r\n",
+                )
+            });
+            match problem(result) {
+                Problem::SourcesUnavailable { detail } => {
+                    assert!(detail.contains("source reset"), "{detail}")
+                }
+                other => panic!("code {code:#x}: {other:?}"),
+            }
+        }
+
+        let (result, _) = list(|_| RunOutcome::TimedOut);
+        assert_eq!(problem(result), Problem::TimedOut);
+
+        let (result, _) = list(|_| {
+            RunOutcome::NotStarted("The system cannot execute the specified program.".to_owned())
+        });
+        assert!(
+            matches!(problem(result), Problem::NotWorking { detail } if detail.contains("cannot execute"))
+        );
+
+        let (result, _) = list(|_| finished(1, "An unexpected error occurred\r\n0x80070057\r\n"));
+        assert_eq!(
+            problem(result),
+            Problem::Failed {
+                code: Some(1),
+                detail: "An unexpected error occurred\n0x80070057".to_owned()
+            }
+        );
+        let (result, _) = list(|_| RunOutcome::Finished {
+            code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+        });
+        assert!(matches!(
+            problem(result),
+            Problem::Failed { code: None, .. }
+        ));
+
+        let (result, _) = list(|_| RunOutcome::Cancelled);
+        assert_eq!(result, Err(ListFailure::Cancelled));
+    }
+
+    #[test]
+    fn a_failure_never_looks_like_an_empty_list() {
+        // The outcome people must never see: a broken package manager
+        // reported as "everything is up to date".
+        for outcome in [
+            finished(codes::SOURCE_OPEN_FAILED, ""),
+            finished(codes::BLOCKED_BY_POLICY, ""),
+            finished(codes::INVALID_CL_ARGUMENTS, ""),
+            finished(-1, ""),
+            finished(1, "garbage"),
+            RunOutcome::TimedOut,
+            RunOutcome::NotStarted(String::new()),
+        ] {
+            let (result, _) = list(|_| outcome.clone());
+            assert!(result.is_err(), "{outcome:?} was reported as success");
+        }
+    }
+
+    #[test]
+    fn results_survive_one_failing_source() {
+        // The Store source is unreachable, the community source answered.
+        let (result, _) = list(|_| {
+            finished(
+                codes::FAILED_TO_OPEN_ALL_SOURCES,
+                &table::fixtures::typical(),
+            )
+        });
+        assert_eq!(result.unwrap().len(), 7);
+        let (result, _) = list(|_| finished(1, &table::fixtures::typical()));
+        assert_eq!(result.unwrap().len(), 7);
+    }
+
+    #[test]
+    fn listings_describe_themselves() {
+        let none = Listing::PackageManager(Vec::new());
+        assert!(none.is_empty() && none.problem().is_none());
+        let fallback = Listing::Catalog {
+            problem: Problem::NotInstalled,
+            updates: Vec::new(),
+            packages_in_catalog: 16_000,
+        };
+        assert_eq!(fallback.problem(), Some(&Problem::NotInstalled));
+        let unknown = Listing::Unavailable {
+            problem: Problem::TimedOut,
+            catalog_error: Some("offline".to_owned()),
+        };
+        // Empty, but with a problem attached: not "up to date".
+        assert!(unknown.is_empty());
+        assert_eq!(unknown.problem(), Some(&Problem::TimedOut));
+        assert_eq!(unknown.len(), 0);
+    }
+
+    #[test]
+    fn command_lines_only_ever_list() {
+        for options in [
+            CheckOptions::default(),
+            CheckOptions {
+                include_unknown: true,
+                include_pinned: true,
+                ..CheckOptions::default()
+            },
+        ] {
+            let attempts = listing_attempts(&options);
+            assert_eq!(attempts.len(), 3);
+            for args in attempts {
+                assert_eq!(args[0], "upgrade");
+                assert!(
+                    !args.iter().any(|a| a == "--all"
+                        || a == "--id"
+                        || a == "-r"
+                        || a == "--recurse"
+                        || a == "--force"),
+                    "{args:?} could install something"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod process_tests {
+    //! The listing driven against real processes: small scripts that behave
+    //! like package managers found on other PCs.
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    /// Writes a stand-in package manager: a batch script with the given body
+    /// and, beside it, the listing it prints.
+    fn stand_in(dir: &Path, name: &str, body: &str) -> PathBuf {
+        std::fs::write(dir.join("listing.txt"), table::fixtures::typical()).unwrap();
+        let script = dir.join(format!("{name}.cmd"));
+        std::fs::write(&script, format!("@echo off\r\n{body}\r\n")).unwrap();
+        script
+    }
+
+    fn list(script: &Path) -> std::result::Result<Vec<SoftwareUpdate>, ListFailure> {
+        list_at(script, &CheckOptions::default(), &Progress::new())
+    }
+
+    #[test]
+    fn a_current_version_lists_in_one_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = stand_in(
+            dir.path(),
+            "current",
+            "echo %*>>\"%~dp0asked.txt\"\r\ntype \"%~dp0listing.txt\"\r\nexit /b 0",
+        );
+        let updates = list(&script).unwrap();
+        assert_eq!(updates.len(), 7);
+        assert!(
+            updates
+                .iter()
+                .any(|u| u.id == "Git.Git" && u.available_version == "2.56.0.4")
+        );
+        let asked = std::fs::read_to_string(dir.path().join("asked.txt")).unwrap();
+        assert_eq!(asked.lines().count(), 1, "{asked}");
+        assert!(asked.contains("upgrade --accept-source-agreements --disable-interactivity"));
+    }
+
+    #[test]
+    fn an_old_version_is_asked_again_without_the_new_option() {
+        let dir = tempfile::tempdir().unwrap();
+        // Rejects the option newer versions know, with the documented code
+        // for invalid command line arguments.
+        let script = stand_in(
+            dir.path(),
+            "old",
+            "echo %*>>\"%~dp0asked.txt\"\r\necho %* | findstr /C:\"--disable-interactivity\" >nul && exit /b -1978335230\r\ntype \"%~dp0listing.txt\"\r\nexit /b 0",
+        );
+        assert_eq!(list(&script).unwrap().len(), 7);
+        let asked = std::fs::read_to_string(dir.path().join("asked.txt")).unwrap();
+        let lines: Vec<&str> = asked.lines().map(str::trim).collect();
+        assert_eq!(
+            lines,
+            [
+                "upgrade --accept-source-agreements --disable-interactivity",
+                "upgrade --accept-source-agreements"
+            ]
+        );
+    }
+
+    #[test]
+    fn failures_of_a_real_process_are_classified() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let policy = stand_in(
+            dir.path(),
+            "policy",
+            "echo Blocked by group policy\r\nexit /b -1978335174",
+        );
+        assert_eq!(
+            list(&policy),
+            Err(ListFailure::Problem(Problem::BlockedByPolicy))
+        );
+
+        let offline = stand_in(
+            dir.path(),
+            "offline",
+            "echo Failed in attempting to update the source: winget\r\necho Failed when opening source(s)\r\nexit /b -1978335163",
+        );
+        match list(&offline) {
+            Err(ListFailure::Problem(Problem::SourcesUnavailable { detail })) => {
+                assert!(detail.contains("Failed when opening source(s)"), "{detail}");
+            }
+            other => panic!("{other:?}"),
+        }
+
+        // Understands nothing it is asked: too old.
+        let ancient = stand_in(dir.path(), "ancient", "exit /b -1978335230");
+        assert!(matches!(
+            list(&ancient),
+            Err(ListFailure::Problem(Problem::TooOld { .. }))
+        ));
+
+        // Prints nothing and fails.
+        let broken = stand_in(dir.path(), "broken", "exit /b 3");
+        assert_eq!(
+            list(&broken),
+            Err(ListFailure::Problem(Problem::Failed {
+                code: Some(3),
+                detail: String::new()
+            }))
+        );
+
+        // Not there at all.
+        let missing = dir.path().join("nowhere").join("winget.exe");
+        assert!(matches!(
+            list(&missing),
+            Err(ListFailure::Problem(Problem::NotWorking { .. }))
+        ));
+    }
+
+    #[test]
+    fn a_silent_package_manager_times_out_and_can_be_cancelled() {
+        let dir = tempfile::tempdir().unwrap();
+        let ping = zest_core::process::system_tool("ping.exe");
+        let hanging = stand_in(
+            dir.path(),
+            "hanging",
+            &format!("\"{}\" -n 30 127.0.0.1 >nul", ping.display()),
+        );
+        // `timeout_secs` has a floor of ten seconds, so cancel instead of
+        // waiting it out; the timeout path itself is covered by the runner.
+        let progress = Progress::new();
+        let canceller = progress.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(400));
+            canceller.cancel();
+        });
+        let started = std::time::Instant::now();
+        let result = list_at(&hanging, &CheckOptions::default(), &progress);
+        assert_eq!(result, Err(ListFailure::Cancelled));
+        assert!(started.elapsed() < Duration::from_secs(8));
     }
 }

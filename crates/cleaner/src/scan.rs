@@ -11,15 +11,17 @@ use crate::pattern::NamePattern;
 use crate::special::{self, RunContext};
 use rayon::prelude::*;
 use std::fs::Metadata;
-use std::path::Path;
-use std::time::{Duration, Instant, SystemTime};
-use zest_core::walk::{self, EntryKind};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+use zest_core::fastdir::{self, RawEntry};
+use zest_core::walk;
 use zest_core::{Progress, safety};
 
 /// Analyses every enabled rule of `catalog`.
 ///
-/// Rules run in parallel. Cancelling through `progress` returns the results
-/// gathered so far.
+/// Rules run in parallel, and so do the folders inside a rule, all on the
+/// shared walk pool of [`zest_core::fastdir`]. Cancelling through `progress`
+/// returns the results gathered so far.
 pub fn scan(catalog: &Catalog, opts: &CleanOptions, progress: &Progress) -> ScanReport {
     let started = Instant::now();
     let ctx = RunContext::new(opts);
@@ -29,19 +31,20 @@ pub fn scan(catalog: &Catalog, opts: &CleanOptions, progress: &Progress) -> Scan
         .collect();
     progress.set_total(jobs.len() as u64);
 
-    let results: Vec<RuleResult> = jobs
-        .par_iter()
-        .filter_map(|(group, rule)| {
-            if progress.is_cancelled() {
-                return None;
-            }
-            progress.set_message(format!("{} – {}", group.name, rule.name));
-            let result = scan_rule(group, rule, &ctx, progress);
-            progress.inc(1);
-            progress.add_bytes(result.bytes);
-            (!result.is_empty()).then_some(result)
-        })
-        .collect();
+    let results: Vec<RuleResult> = fastdir::pool().install(|| {
+        jobs.par_iter()
+            .filter_map(|(group, rule)| {
+                if progress.is_cancelled() {
+                    return None;
+                }
+                progress.set_message(format!("{} – {}", group.name, rule.name));
+                let result = scan_rule(group, rule, &ctx, progress);
+                progress.inc(1);
+                progress.add_bytes(result.bytes);
+                (!result.is_empty()).then_some(result)
+            })
+            .collect()
+    });
 
     let mut report = ScanReport {
         bytes: results.iter().map(|r| r.bytes).sum(),
@@ -204,15 +207,78 @@ fn entry_size(meta: &Metadata) -> u64 {
     if walk::is_link(meta) { 0 } else { meta.len() }
 }
 
-fn old_enough(meta: &Metadata, min_age: Duration, now: SystemTime) -> bool {
-    if min_age.is_zero() {
-        return true;
+/// Decides which entries of a folder a rule takes.
+struct FileFilter<'a> {
+    pattern: &'a NamePattern,
+    min_age: Duration,
+    ctx: &'a RunContext<'a>,
+}
+
+impl FileFilter<'_> {
+    fn old_enough(&self, entry: &RawEntry<'_>) -> bool {
+        if self.min_age.is_zero() {
+            return true;
+        }
+        match entry.modified_time() {
+            Some(modified) => self
+                .ctx
+                .now
+                .duration_since(modified)
+                .is_ok_and(|age| age >= self.min_age),
+            // Without a timestamp we cannot prove the file is old: leave it.
+            None => false,
+        }
     }
-    match meta.modified() {
-        Ok(modified) => now.duration_since(modified).is_ok_and(|age| age >= min_age),
-        // Without a timestamp we cannot prove the file is old: leave it.
-        Err(_) => false,
+
+    /// The finding for `entry` (a file or a link inside `dir`), if the rule
+    /// wants it. The path is only built for entries that pass the cheap
+    /// name and age tests.
+    fn accept(&self, dir: &Path, entry: &RawEntry<'_>) -> Option<Finding> {
+        let name_matches = self.pattern.matches_all()
+            || self.pattern.matches(&String::from_utf16_lossy(entry.name));
+        if !name_matches || !self.old_enough(entry) {
+            return None;
+        }
+        let path = entry.path_in(dir);
+        // Links take no space of their own.
+        let size = if entry.is_link() { 0 } else { entry.size };
+        allowed(&path, self.ctx).then(|| Finding::file(path, size))
     }
+}
+
+/// Everything the filter accepts below `dir`: its own entries first, then
+/// each sub-folder in listing order, so the result does not depend on how
+/// the work was spread over threads. Links are offered to the filter as
+/// entries and never descended into.
+fn collect_tree(dir: &Path, filter: &FileFilter<'_>, progress: &Progress) -> Vec<Finding> {
+    if progress.is_cancelled() {
+        return Vec::new();
+    }
+    let mut found = Vec::new();
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    // Unreadable folders are skipped silently.
+    let _ = fastdir::read_dir_raw(dir, &mut |entry| {
+        if entry.is_dir() && !entry.is_link() {
+            subdirs.push(entry.path_in(dir));
+        } else if let Some(finding) = filter.accept(dir, entry) {
+            found.push(finding);
+        }
+    });
+    if subdirs.len() < 2 {
+        for sub in &subdirs {
+            found.extend(collect_tree(sub, filter, progress));
+        }
+    } else {
+        let nested: Vec<Vec<Finding>> = subdirs
+            .par_iter()
+            .map(|sub| collect_tree(sub, filter, progress))
+            .collect();
+        found.reserve(nested.iter().map(Vec::len).sum());
+        for part in nested {
+            found.extend(part);
+        }
+    }
+    found
 }
 
 fn scan_files(
@@ -232,33 +298,27 @@ fn scan_files(
     if ctx.excluder.excludes_path(dir) {
         return;
     }
-    let mut consider = |path: &Path, meta: &Metadata| {
-        let matches = pattern.matches_all()
-            || path
-                .file_name()
-                .is_some_and(|name| pattern.matches(&name.to_string_lossy()));
-        if matches && old_enough(meta, min_age, ctx.now) && allowed(path, ctx) {
-            out.push(Finding::file(path.to_path_buf(), entry_size(meta)));
-        }
+    let filter = FileFilter {
+        pattern,
+        min_age,
+        ctx,
     };
 
     if recursive {
-        walk::walk_tree(dir, Some(progress), &mut |path, meta, kind| {
-            if kind != EntryKind::Dir {
-                consider(path, meta);
-            }
-        });
+        for finding in collect_tree(dir, &filter, progress) {
+            out.push(finding);
+        }
         if !out.prune_roots.iter().any(|p| p == dir) {
             out.prune_roots.push(dir.to_path_buf());
         }
-    } else if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            if let Ok(meta) = entry.metadata()
-                && (!meta.is_dir() || walk::is_link(&meta))
+    } else {
+        let _ = fastdir::read_dir_raw(dir, &mut |entry| {
+            if (!entry.is_dir() || entry.is_link())
+                && let Some(finding) = filter.accept(dir, entry)
             {
-                consider(&entry.path(), &meta);
+                out.push(finding);
             }
-        }
+        });
     }
 }
 
