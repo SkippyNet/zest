@@ -88,7 +88,11 @@ fn show_fatal(message: &str) {
 }
 
 /// Starts the app again with Direct3D after OpenGL failed to initialise.
-fn restart_with_direct3d(args: &[String]) -> std::io::Result<()> {
+///
+/// A screenshot run is something a script waits for, so there this process
+/// stays until the new one has finished and passes its exit code on.
+/// Otherwise the new process simply takes over.
+fn restart_with_direct3d(args: &[String]) -> std::io::Result<Option<i32>> {
     let mut forwarded: Vec<&str> = Vec::new();
     let mut skip_value = false;
     for arg in args {
@@ -100,15 +104,18 @@ fn restart_with_direct3d(args: &[String]) -> std::io::Result<()> {
             forwarded.push(arg);
         }
     }
-    std::process::Command::new(std::env::current_exe()?)
-        .args(forwarded)
-        .args([
-            gpu::OVERRIDE_ARG,
-            gpu::Backend::Direct3d.name(),
-            RESTARTED_ARG,
-        ])
-        .spawn()
-        .map(|_| ())
+    let wait = args.iter().any(|a| a == "--screenshots");
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command.args(forwarded).args([
+        gpu::OVERRIDE_ARG,
+        gpu::Backend::Direct3d.name(),
+        RESTARTED_ARG,
+    ]);
+    if wait {
+        Ok(Some(command.status()?.code().unwrap_or(1)))
+    } else {
+        command.spawn().map(|_| None)
+    }
 }
 
 fn main() {
@@ -199,7 +206,8 @@ fn main() {
         // Let the new process take over the single-instance lock.
         drop(instance);
         match restart_with_direct3d(&args) {
-            Ok(()) => return,
+            Ok(Some(code)) => std::process::exit(code),
+            Ok(None) => return,
             Err(e) => log::error!("could not start again: {e}"),
         }
     }

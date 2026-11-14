@@ -284,7 +284,7 @@ $shots = Join-Path $Out "screenshots"
 $p = Start-Process $gui -ArgumentList "--demo", "--screenshots", $shots -PassThru
 if (-not $p.WaitForExit(600000)) { $p.Kill() }
 Check "the app starts, draws every page and exits" { $p.HasExited -and $p.ExitCode -eq 0 }
-Check "a picture of every page was saved" { (Get-ChildItem $shots -Filter *.png -ErrorAction SilentlyContinue).Count -ge 14 }
+Check "a picture of every page was saved" { (Get-ChildItem $shots -Filter *.png -ErrorAction SilentlyContinue).Count -ge 19 }
 $log = Join-Path $env:ZEST_DATA_DIR "logs\zest.log"
 Check "no panic in the log" { -not (Test-Path $log) -or -not (Select-String -Path $log -Pattern "panic" -Quiet) }
 
