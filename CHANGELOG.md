@@ -6,11 +6,11 @@ Notable changes in each release. Versions follow [semantic versioning](https://s
 
 Groundwork for code-signed releases. Nothing about cleaning has changed.
 
-- The installer shows the [privacy policy](PRIVACY.md) before it installs anything, and has a new option, **Check for new versions of Zest once a day**. Untick it and Zest never goes online by itself. Updating from 0.9.0 keeps the choice you made in the app.
+- The installer shows the [privacy policy](https://github.com/SkippyNet/zest/blob/main/PRIVACY.md) before it installs anything, and has a new option, **Check for new versions of Zest once a day**. Untick it and Zest never goes online by itself. Updating from 0.9.0 keeps the choice you made in the app.
 - `zest-cli update auto on|off` switches the same daily check from the command line; `zest-cli update auto` shows where it stands.
 - `zest-cli.exe` now carries the product name, version and icon in its file details, like `zest.exe`.
 - The portable zip and the installed copy include the privacy policy as `PRIVACY.txt`.
-- A [code signing policy](README.md#code-signing-policy) is published. Downloads are still unsigned in this release; the release pipeline is ready to sign them once the project has a signing account.
+- A [code signing policy](https://github.com/SkippyNet/zest#code-signing-policy) is published. Downloads are still unsigned in this release; the release pipeline is ready to sign them once the project has a signing account.
 
 ## 0.9.0
 
