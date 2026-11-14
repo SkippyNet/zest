@@ -12,8 +12,22 @@ downloads; pick one.
 - Installs for your Windows account only, into `%LOCALAPPDATA%\Programs\Zest`. It does not ask for
   administrator rights. (Choose *Install for all users* in the first dialog if you want it in
   `Program Files`; that does ask.)
+- Shows the [privacy policy](https://github.com/SkippyNet/zest/blob/main/PRIVACY.md) before it
+  installs anything.
 - Adds a Start menu entry and, if you tick it, a desktop shortcut.
+- Asks whether Zest may **check for new versions once a day**. That is the only thing Zest does
+  on the network by itself. Untick it and Zest stays offline until you ask it for something; you
+  can change your mind later under *Options → About*.
 - Can update itself later: *Options → About → Check for updates*.
+
+Installing without the wizard, for example on several PCs:
+
+```powershell
+# Quiet install for the current user, with the daily update check switched off
+.\Zest-<version>-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /MERGETASKS="!updatecheck"
+```
+
+A quiet install that does not mention `updatecheck` leaves that setting as it is.
 
 To remove it: *Settings → Apps → Installed apps → Zest → Uninstall*. The uninstaller asks whether
 to delete your settings, history and registry backups as well.
@@ -46,6 +60,10 @@ gh attestation verify .\Zest-<version>-x64-setup.exe --repo SkippyNet/zest
 
 Every release is compiled by GitHub Actions from the tagged source code; nobody uploads files
 built on their own computer.
+
+Signing is being arranged. The
+[code signing policy](https://github.com/SkippyNet/zest#code-signing-policy) says who will be
+able to sign Zest and what a signature will mean.
 
 ## Where Zest keeps its things
 

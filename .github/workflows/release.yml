@@ -3,6 +3,15 @@ name: Release
 # Pushing a tag like v1.2.3 builds the installer and the portable zip on a
 # clean GitHub runner and publishes them as a release. Nothing is built on a
 # developer's machine, and every file gets a checksum and a build attestation.
+#
+# Code signing is built in but switched off until the repository has a signing
+# account: set the repository variable SIGNPATH_ORGANIZATION_ID and the secret
+# SIGNPATH_API_TOKEN (CONTRIBUTING.md, "Code signing", has the whole list).
+# Without them every step marked "signing" is skipped and the files are
+# published unsigned. With them, the two programs are signed first, the
+# installer is built from the signed programs, and then the installer is
+# signed. A tag is signed with the release certificate, which a person has to
+# approve in the signing service; a manual run uses its test certificate.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
@@ -23,12 +32,17 @@ env:
   CARGO_INCREMENTAL: 0
   # The compiler everyone builds with. Raise it here and in Cargo.toml (rust-version) together.
   RUST_VERSION: "1.92.0"
+  SIGNING: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && 'on' || 'off' }}
+  SIGNING_POLICY: ${{ (github.ref_type == 'tag' || inputs.publish) && 'release-signing' || 'test-signing' }}
 
 jobs:
   build:
     name: Build installer and portable zip
+    # The job must run on a GitHub-hosted machine: the signing service only
+    # accepts files whose whole build it can trace to one.
     runs-on: windows-latest
-    timeout-minutes: 90
+    # Signing a release waits for a person to approve it, twice.
+    timeout-minutes: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && 330 || 90 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -61,6 +75,44 @@ jobs:
           $env:RUSTFLAGS = "--remap-path-prefix=$env:GITHUB_WORKSPACE=. --remap-path-prefix=$env:USERPROFILE\.cargo=cargo"
           cargo build --release --locked -p zest -p zest-cli
 
+      - name: Hand the programs to the signing service (signing)
+        id: unsigned-programs
+        if: env.SIGNING == 'on'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-programs
+          # Both files end up at the top of the artifact.
+          path: |
+            target/release/zest.exe
+            target/release/zest-cli.exe
+          if-no-files-found: error
+
+      - name: Sign the programs (signing)
+        if: env.SIGNING == 'on'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'zest' }}
+          signing-policy-slug: ${{ env.SIGNING_POLICY }}
+          artifact-configuration-slug: programs
+          github-artifact-id: ${{ steps.unsigned-programs.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: signed/programs
+
+      - name: Use the signed programs from here on (signing)
+        if: env.SIGNING == 'on'
+        shell: pwsh
+        run: |
+          foreach ($name in 'zest.exe', 'zest-cli.exe') {
+            $signed = Join-Path 'signed\programs' $name
+            if (-not (Test-Path $signed)) { throw "the signing service did not return $name" }
+            Copy-Item $signed (Join-Path 'target\release' $name) -Force
+          }
+
       - name: Portable zip
         shell: pwsh
         run: |
@@ -68,6 +120,7 @@ jobs:
           New-Item -ItemType Directory -Force dist, dist\portable | Out-Null
           Copy-Item target\release\zest.exe, target\release\zest-cli.exe, LICENSE, NOTICE dist\portable
           Copy-Item installer\README.txt dist\portable\README.txt
+          Copy-Item PRIVACY.md dist\portable\PRIVACY.txt
           # This marker keeps settings and history beside the executable.
           New-Item -ItemType File dist\portable\zest.portable | Out-Null
           Compress-Archive -Path dist\portable\* -DestinationPath "dist\Zest-$v-x64-portable.zip" -CompressionLevel Optimal
@@ -86,20 +139,96 @@ jobs:
           & $iscc "/DAppVersion=$v" installer\zest.iss
           if ($LASTEXITCODE -ne 0) { throw "the installer did not compile" }
 
+      - name: Hand the installer to the signing service (signing)
+        id: unsigned-installer
+        if: env.SIGNING == 'on'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: dist/Zest-${{ steps.version.outputs.version }}-x64-setup.exe
+          if-no-files-found: error
+
+      - name: Sign the installer (signing)
+        if: env.SIGNING == 'on'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'zest' }}
+          signing-policy-slug: ${{ env.SIGNING_POLICY }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: signed/installer
+
+      - name: Use the signed installer and check every signature (signing)
+        if: env.SIGNING == 'on'
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $setup = "dist\Zest-$v-x64-setup.exe"
+          $signed = "signed\installer\Zest-$v-x64-setup.exe"
+          if (-not (Test-Path $signed)) { throw "the signing service did not return the installer" }
+          Copy-Item $signed $setup -Force
+
+          # What is published: the installer, and the programs inside the zip.
+          $unpacked = "$env:RUNNER_TEMP\signed-check"
+          Expand-Archive "dist\Zest-$v-x64-portable.zip" $unpacked -Force
+          # A manual run is signed with the service's test certificate, which
+          # Windows does not trust; only a release must verify as valid.
+          $release = $env:SIGNING_POLICY -eq 'release-signing'
+          foreach ($file in $setup, "$unpacked\zest.exe", "$unpacked\zest-cli.exe") {
+            $name = Split-Path $file -Leaf
+            $signature = Get-AuthenticodeSignature $file
+            if (-not $signature.SignerCertificate) { throw "$name is not signed" }
+            Write-Host "${name}: $($signature.Status), signed by $($signature.SignerCertificate.Subject)"
+            if ($release -and $signature.Status -ne 'Valid') {
+              throw "${name}: the signature is $($signature.Status), not valid"
+            }
+          }
+
       - name: Try the installer on this runner
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
           $setup = (Resolve-Path "dist\Zest-$v-x64-setup.exe").Path
           $target = "$env:RUNNER_TEMP\zest-install"
-          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/NOLAUNCH',"/DIR=$target" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
-          foreach ($f in 'zest.exe','zest-cli.exe','unins000.exe') {
+          # Keep the settings the installed copy writes away from the runner's profile.
+          $env:ZEST_DATA_DIR = "$env:RUNNER_TEMP\zest-install-data"
+          $quiet = '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/NOLAUNCH',"/DIR=$target"
+          function Install([string[]]$extra) {
+            $p = Start-Process $setup -ArgumentList ($quiet + $extra) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+          }
+          function DailyCheck {
+            $state = & "$target\zest-cli.exe" --json update auto | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "zest-cli update auto exited with $LASTEXITCODE" }
+            [bool]$state.check_automatically
+          }
+
+          # The option "Check for new versions of Zest once a day", unticked.
+          Install @('/MERGETASKS="!updatecheck"')
+          foreach ($f in 'zest.exe','zest-cli.exe','unins000.exe','PRIVACY.txt','LICENSE.txt') {
             if (-not (Test-Path "$target\$f")) { throw "$f was not installed" }
           }
           $reported = & "$target\zest-cli.exe" --version
           Write-Host $reported
           if ($reported -notmatch [regex]::Escape($v)) { throw "installed CLI reports '$reported', expected $v" }
+          if (DailyCheck) { throw "the installer option did not switch the daily update check off" }
+
+          # Zest updates itself with a silent install that names no option;
+          # that must leave the setting alone.
+          Install @()
+          if (DailyCheck) { throw "a plain silent install switched the daily update check back on" }
+
+          # And ticked again.
+          Install @('/MERGETASKS="updatecheck"')
+          if (-not (DailyCheck)) { throw "the installer option did not switch the daily update check on" }
+          Write-Host "The installer's update-check option works in both directions."
+
           $u = Start-Process "$target\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($u.ExitCode -ne 0) { throw "uninstaller exited with $($u.ExitCode)" }
           Start-Sleep -Seconds 3

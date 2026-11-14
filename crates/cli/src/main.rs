@@ -118,7 +118,7 @@ enum Command {
         #[command(subcommand)]
         action: backup_cmd::BackupAction,
     },
-    /// Zest's own updates: check for a newer version and install it.
+    /// Zest's own updates: check for a newer version, install it, or switch the daily check.
     Update {
         #[command(subcommand)]
         action: update_cmd::UpdateAction,

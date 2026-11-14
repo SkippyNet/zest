@@ -18,4 +18,10 @@ Website:   https://skippynet.github.io/zest/
 Source:    https://github.com/SkippyNet/zest
 Problems:  https://github.com/SkippyNet/zest/issues
 
+Zest sends nothing about you or your PC anywhere. PRIVACY.txt lists the few
+cases in which it uses the network. The only one it starts by itself is a
+daily look for a newer version; switch it off under Options > About, or with
+
+    zest-cli update auto off
+
 Zest is free software under the Apache License 2.0. See LICENSE and NOTICE.

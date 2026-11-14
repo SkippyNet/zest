@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer": the setup program, as the
+  release workflow uploads it (a zip with that one file). The programs inside
+  it were signed before it was built, through the "programs" configuration.
+
+  Inno Setup pads the product name and version in the setup program's details
+  with spaces. If SignPath compares them exactly, relax the two restrictions
+  below in agreement with SignPath rather than removing the check silently.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="Zest-${version}-x64-setup.exe" product-name="Zest" product-version="${version}">
+      <authenticode-sign description="Zest setup" description-url="https://skippynet.github.io/zest/" />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

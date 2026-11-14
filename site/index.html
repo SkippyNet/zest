@@ -199,7 +199,20 @@ cd zest
 cargo build --release</code></pre>
         </article>
       </div>
-      <p class="note">Windows SmartScreen may warn about a new download that is not code-signed yet. Choose <em>More info</em>, then <em>Run anyway</em>, or compare the file with <code>SHA256SUMS.txt</code> from the release first. <a href="https://github.com/SkippyNet/zest/releases" rel="noopener">All releases and checksums</a>.</p>
+      <p class="note">Windows SmartScreen may warn about a new download that is not code-signed yet. Choose <em>More info</em>, then <em>Run anyway</em>, or compare the file with <code>SHA256SUMS.txt</code> from the release first. <a href="https://github.com/SkippyNet/zest/releases" rel="noopener">All releases and checksums</a>. Signing is on its way: see the <a href="#signing">code signing policy</a>.</p>
+    </section>
+
+    <section class="band split" id="signing">
+      <div>
+        <h2>Code signing policy</h2>
+        <p>Who may sign Zest, and what a signature will mean.</p>
+      </div>
+      <ul class="facts">
+        <li><strong>Not signed yet.</strong> Zest has not been accepted into a signing programme so far. It is prepared for the one <a href="https://signpath.org/" rel="noopener">SignPath Foundation</a> runs for open-source software, and from the first signed release this applies: free code signing provided by <a href="https://signpath.io/" rel="noopener">SignPath.io</a>, certificate by <a href="https://signpath.org/" rel="noopener">SignPath Foundation</a>.</li>
+        <li><strong>Committers and reviewers:</strong> <a href="https://github.com/SkippyNet" rel="noopener">Pseudo Nymm</a>. <strong>Approvers:</strong> <a href="https://github.com/SkippyNet" rel="noopener">Pseudo Nymm</a>.</li>
+        <li><strong>Only public builds are signed.</strong> The installer and the two programs come from the release workflow on GitHub's machines, built from the tagged source. Every release is approved by hand before it is signed.</li>
+        <li><strong>Privacy policy.</strong> Zest sends nothing about you or your PC anywhere. By itself it only asks GitHub, at most once a day, whether a newer version exists, and the installer lets you switch that off. <a href="https://github.com/SkippyNet/zest/blob/main/PRIVACY.md" rel="noopener">Read the privacy policy</a>.</li>
+      </ul>
     </section>
   </main>
 
@@ -213,6 +226,8 @@ cargo build --release</code></pre>
       <a href="https://github.com/SkippyNet/zest/issues" rel="noopener">Report a problem</a>
       <a href="https://github.com/SkippyNet/zest/blob/main/docs/guide/Home.md" rel="noopener">Guide</a>
       <a href="https://github.com/SkippyNet/zest/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/SkippyNet/zest/blob/main/PRIVACY.md" rel="noopener">Privacy policy</a>
+      <a href="#signing">Code signing policy</a>
       <a href="https://github.com/SkippyNet/zest/blob/main/LICENSE" rel="noopener">Apache License 2.0</a>
     </nav>
     <p>Made by Pseudo Nymm and contributors. This page loads no trackers and no third-party scripts; it asks GitHub once for the newest version number.</p>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "programs": the two executables, as the
+  release workflow uploads them (a zip with both files at the top).
+
+  The product name and version are enforced: a file that does not say it is
+  Zest, in the version being released, is refused instead of signed.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="zest.exe" product-name="Zest" product-version="${version}">
+      <authenticode-sign description="Zest" description-url="https://skippynet.github.io/zest/" />
+    </pe-file>
+    <pe-file path="zest-cli.exe" product-name="Zest" product-version="${version}">
+      <authenticode-sign description="Zest command line" description-url="https://skippynet.github.io/zest/" />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

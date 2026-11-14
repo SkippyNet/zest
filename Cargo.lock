@@ -3963,7 +3963,7 @@ dependencies = [
 
 [[package]]
 name = "zest"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "eframe",
  "egui-phosphor",
@@ -3981,7 +3981,7 @@ dependencies = [
 
 [[package]]
 name = "zest-backup"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "blake3",
  "chrono",
@@ -3997,7 +3997,7 @@ dependencies = [
 
 [[package]]
 name = "zest-cleaner"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "log",
  "rayon",
@@ -4012,17 +4012,18 @@ dependencies = [
 
 [[package]]
 name = "zest-cli"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "winresource",
  "zest-engine",
 ]
 
 [[package]]
 name = "zest-core"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "log",
@@ -4037,7 +4038,7 @@ dependencies = [
 
 [[package]]
 name = "zest-disk"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "blake3",
  "log",
@@ -4051,7 +4052,7 @@ dependencies = [
 
 [[package]]
 name = "zest-engine"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "log",
@@ -4072,7 +4073,7 @@ dependencies = [
 
 [[package]]
 name = "zest-hardware"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "log",
@@ -4086,7 +4087,7 @@ dependencies = [
 
 [[package]]
 name = "zest-performance"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "log",
  "serde",
@@ -4099,7 +4100,7 @@ dependencies = [
 
 [[package]]
 name = "zest-registry"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "log",
  "rayon",
@@ -4111,7 +4112,7 @@ dependencies = [
 
 [[package]]
 name = "zest-system"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "log",
@@ -4126,7 +4127,7 @@ dependencies = [
 
 [[package]]
 name = "zest-tweaks"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "log",
  "serde",
@@ -4138,7 +4139,7 @@ dependencies = [
 
 [[package]]
 name = "zest-updates"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "log",

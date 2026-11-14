@@ -69,6 +69,31 @@ merging to `main`, and pushing a tag named `v<version>`. The
 GitHub, tests the installer, writes `SHA256SUMS.txt`, attests the build and publishes the
 release. The app's update check reads that release.
 
+### Code signing
+
+The release workflow can sign the two programs and the installer through
+[SignPath](https://signpath.io/). It is switched off until the repository has an account there;
+until then every step marked "signing" is skipped. The [code signing policy](README.md#code-signing-policy)
+says who may sign. To switch it on, a maintainer:
+
+1. In SignPath, creates a project with the slug `zest`, links the predefined *GitHub.com* trusted
+   build system to it, and adds two artifact configurations named `programs` and `installer`
+   from the files in [`installer/signpath/`](installer/signpath).
+2. Makes sure the project has the signing policies `test-signing` and `release-signing`.
+3. In this repository's settings, adds the secret `SIGNPATH_API_TOKEN` (a SignPath token that
+   may submit signing requests) and the variable `SIGNPATH_ORGANIZATION_ID`. The variable
+   `SIGNPATH_PROJECT_SLUG` is only needed if the project is not called `zest`.
+4. Starts the release workflow by hand with *publish* off. That run signs with the test
+   certificate and publishes nothing; it shows whether the configuration is right.
+
+From then on, pushing a version tag sends two signing requests, the programs and then the
+installer built from them. Each waits for an approver to accept it in SignPath, and the workflow
+refuses to publish unless Windows reports all three signatures as valid.
+
+Signed files must say what they are: the product name is `Zest` and the product version is the
+release version, in `zest.exe`, `zest-cli.exe` (their `build.rs`) and the installer
+(`installer/zest.iss`). SignPath refuses a file where that does not hold.
+
 ## Licence
 
 By contributing you agree that your work is licensed under the [Apache License 2.0](LICENSE).

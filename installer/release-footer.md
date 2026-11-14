@@ -15,3 +15,5 @@ Windows SmartScreen may warn about these files because they are not code-signed 
 
 - Compare the file's SHA-256 with `SHA256SUMS.txt` (`Get-FileHash <file>` in PowerShell).
 - Confirm it was built from this repository by GitHub Actions: `gh attestation verify <file> --repo {repo}`.
+
+[Code signing policy](https://github.com/{repo}#code-signing-policy) · [Privacy policy](https://github.com/{repo}/blob/main/PRIVACY.md)

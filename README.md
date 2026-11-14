@@ -48,7 +48,8 @@ Windows 10 (1809 or later) or Windows 11, 64-bit.
 > **"Windows protected your PC"?** The files are not code-signed yet, so SmartScreen warns about
 > them. Choose *More info*, then *Run anyway*, or verify the download first: every release is
 > built by GitHub Actions from the tagged source and ships with `SHA256SUMS.txt` and a build
-> attestation (`gh attestation verify <file> --repo SkippyNet/zest`).
+> attestation (`gh attestation verify <file> --repo SkippyNet/zest`). Signing is on its way; see
+> the [code signing policy](#code-signing-policy).
 
 ## What is inside
 
@@ -123,7 +124,8 @@ Windows 10 (1809 or later) or Windows 11, 64-bit.
 4. **Privacy rules are off by default.** Out of the box Zest removes junk. Cookies, history and
    saved passwords are only touched if you tick them.
 5. **It keeps to itself.** No telemetry, no ads, no account. It goes online for its own update
-   check and for the software catalog when you ask for updates; both can be switched off.
+   check and for the software catalog when you ask for updates; both can be switched off, the
+   update check already in the installer. The [privacy policy](PRIVACY.md) lists every case.
 
 More in the [safety guide](docs/guide/Safety.md).
 
@@ -157,6 +159,7 @@ zest-cli duplicates D:\Photos      identical files
 zest-cli backup create|list|restore|verify
 zest-cli system                    hardware and health report
 zest-cli update check              is there a newer Zest?
+zest-cli update auto [on|off]      the daily check for a newer Zest
 ```
 
 Add `--json` to any command for machine-readable output. Full reference in the
@@ -210,6 +213,28 @@ The workspace:
 - **Security problem?** Please [report it privately](SECURITY.md).
 - **Want to help?** Read [CONTRIBUTING.md](CONTRIBUTING.md). Testing a feature on real hardware
   is as valuable as code.
+
+## Code signing policy
+
+Zest's downloads are **not code-signed yet**. The project has not been accepted into a signing
+programme so far; it is prepared for the one [SignPath Foundation](https://signpath.org/) runs for
+open-source software, and from the first signed release this applies:
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+- **Committers and reviewers:** [Pseudo Nymm](https://github.com/SkippyNet)
+- **Approvers:** [Pseudo Nymm](https://github.com/SkippyNet)
+- **What is signed:** only the installer and the two programs that this repository's
+  [release workflow](.github/workflows/release.yml) builds on GitHub's machines from the tagged
+  source. Nothing built on anyone's own computer is signed, and every release is approved by
+  hand before it is signed.
+- **Privacy policy:** [PRIVACY.md](PRIVACY.md). Zest sends nothing about you or your PC anywhere.
+  By itself it only asks GitHub, at most once a day, whether a newer version exists; the
+  installer shows the policy and lets you switch that off.
+
+Until then, check a download with `SHA256SUMS.txt` or its build attestation, as described under
+[Download](#download).
 
 ## License
 

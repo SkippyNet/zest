@@ -25,6 +25,14 @@ pub fn automatic_check_due(settings: &Settings, now: i64) -> bool {
         && selfupdate::check_is_due(settings.app_updates.last_checked, now)
 }
 
+/// Switches the daily check on or off; checking by hand keeps working either
+/// way. Returns true when the settings changed.
+pub fn set_automatic(settings: &mut Settings, on: bool) -> bool {
+    let changed = settings.app_updates.check_automatically != on;
+    settings.app_updates.check_automatically = on;
+    changed
+}
+
 /// Stores the result of a check. Failed checks are remembered as attempts
 /// too, so that an unreachable server is not asked again on every start.
 /// Returns true when the settings changed.
@@ -71,6 +79,24 @@ mod tests {
         settings.app_updates.check_automatically = false;
         assert!(!automatic_check_due(&settings, now));
         assert!(super::now() > 1_700_000_000);
+    }
+
+    #[test]
+    fn the_switch_reports_whether_it_changed_anything() {
+        let mut settings = Settings::default();
+        settings.app_updates.skipped_version = Some("1.2.3".to_owned());
+        assert!(!set_automatic(&mut settings, true), "already on");
+        assert!(set_automatic(&mut settings, false));
+        assert!(!settings.app_updates.check_automatically);
+        assert!(!automatic_check_due(&settings, 1_800_000_000));
+        assert!(!set_automatic(&mut settings, false), "already off");
+        assert!(set_automatic(&mut settings, true));
+        assert!(settings.app_updates.check_automatically);
+        // Nothing else about the updater is touched.
+        assert_eq!(
+            settings.app_updates.skipped_version.as_deref(),
+            Some("1.2.3")
+        );
     }
 
     #[test]

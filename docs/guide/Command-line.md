@@ -30,6 +30,7 @@ with code 1 and a message on standard error.
 | `zest-cli backup list --dest <folder>` | Backups in a destination |
 | `zest-cli backup verify --dest <folder>` | Reads stored data back and checks it. `--snapshot <id>` for one backup |
 | `zest-cli update check` | Whether a newer Zest has been published |
+| `zest-cli update auto` | Whether Zest looks for a newer version by itself once a day |
 
 ## Commands that change something
 
@@ -79,8 +80,13 @@ zest-cli backup restore --dest <folder> (--to <folder> | --original)
 ### Update Zest
 
 ```text
-zest-cli update install [--yes]
+zest-cli update install [--yes]    download the newest version, verify it and install it
+zest-cli update auto off           stop the daily look for a newer version
+zest-cli update auto on            start it again
 ```
+
+`update auto off` only stops the check Zest starts by itself. `update check` and
+`update install` keep working.
 
 ## Examples
 

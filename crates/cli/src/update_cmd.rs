@@ -1,7 +1,7 @@
 //! `update`: Zest's own updates from its public repository, and the listing
 //! behind `updates list`: other programs' updates on any PC.
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::json;
 use std::io::Write;
 use zest_engine::core::fmt::{format_bytes, plural};
@@ -22,6 +22,19 @@ pub enum UpdateAction {
         #[arg(long, short)]
         yes: bool,
     },
+    /// Show or change whether Zest looks for a new version once a day.
+    Auto {
+        /// `on` or `off`. Leave it out to see the current choice (changes nothing).
+        #[arg(value_enum)]
+        state: Option<Switch>,
+    },
+}
+
+/// The two positions of a setting.
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Switch {
+    On,
+    Off,
 }
 
 fn truncate(text: &str, width: usize) -> String {
@@ -226,11 +239,44 @@ fn install(json: bool, yes: bool) -> CliResult {
     Ok(())
 }
 
+/// `update auto [on|off]`: the daily check. The installer uses this to carry
+/// out the choice made on its options page, so the setting has one home (the
+/// settings file) whether it is changed there, here or in the app.
+fn auto(json: bool, state: Option<Switch>) -> CliResult {
+    let mut settings = Settings::load();
+    let changed = match state {
+        Some(state) => app_update::set_automatic(&mut settings, state == Switch::On),
+        None => false,
+    };
+    if changed {
+        settings
+            .save()
+            .map_err(|e| format!("the choice could not be saved: {e}"))?;
+    }
+    let on = settings.app_updates.check_automatically;
+    if json {
+        return print_json(&json!({ "check_automatically": on, "changed": changed }));
+    }
+    if on {
+        println!(
+            "{} looks for a new version once a day. Switch it off with: zest-cli update auto off",
+            brand::NAME
+        );
+    } else {
+        println!(
+            "{} does not look for new versions by itself. Check by hand with: zest-cli update check",
+            brand::NAME
+        );
+    }
+    Ok(())
+}
+
 /// Entry point of `zest-cli update …`.
 pub fn run(json: bool, action: UpdateAction) -> CliResult {
     match action {
         UpdateAction::Check => check(json),
         UpdateAction::Install { yes } => install(json, yes),
+        UpdateAction::Auto { state } => auto(json, state),
     }
 }
 

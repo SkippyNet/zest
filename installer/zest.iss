@@ -25,6 +25,9 @@ DefaultGroupName=Zest
 DisableProgramGroupPage=yes
 DisableWelcomePage=no
 LicenseFile=..\LICENSE
+; The privacy policy is shown before anything is installed. Its one automatic
+; network use, the daily update check, can be unticked on the next page.
+InfoBeforeFile=..\PRIVACY.md
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 OutputDir=..\dist
@@ -47,18 +50,25 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+; The only thing Zest does on the network by itself (see PRIVACY.md).
+Name: "updatecheck"; Description: "Check for new versions of Zest once a day"; GroupDescription: "Updates:"
 
 [Files]
 Source: "..\target\release\zest.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\zest-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; DestName: "NOTICE.txt"; Flags: ignoreversion
+Source: "..\PRIVACY.md"; DestDir: "{app}"; DestName: "PRIVACY.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Zest"; Filename: "{app}\zest.exe"
 Name: "{autodesktop}\Zest"; Filename: "{app}\zest.exe"; Tasks: desktopicon
 
 [Run]
+; Carry out the choice made for "Check for new versions of Zest once a day",
+; before Zest is started below. See AppliesUpdateChoice for when this runs.
+Filename: "{app}\zest-cli.exe"; Parameters: "update auto on"; Tasks: updatecheck; Flags: runhidden runasoriginaluser; Check: AppliesUpdateChoice
+Filename: "{app}\zest-cli.exe"; Parameters: "update auto off"; Tasks: not updatecheck; Flags: runhidden runasoriginaluser; Check: AppliesUpdateChoice
 ; After a normal install: offer to start Zest.
 Filename: "{app}\zest.exe"; Description: "{cm:LaunchProgram,Zest}"; Flags: nowait postinstall skipifsilent
 ; After a silent install (that is how Zest updates itself): start it again.
@@ -80,6 +90,16 @@ function ShouldRelaunch(): Boolean;
 begin
   // /NOLAUNCH lets automated installs (and tests) skip the restart.
   Result := WizardSilent() and (Pos('/NOLAUNCH', Uppercase(GetCmdTail())) = 0);
+end;
+
+function AppliesUpdateChoice(): Boolean;
+begin
+  // With the wizard on screen the tick box is a choice the user just made.
+  // A silent install has no tick box: Zest updates itself that way, and such
+  // a run must leave the setting the user chose in the app alone. A silent
+  // install only changes it when the command line names the task, as in
+  //   /MERGETASKS="!updatecheck"   (off)   or   /MERGETASKS="updatecheck"   (on)
+  Result := (not WizardSilent()) or (Pos('UPDATECHECK', Uppercase(GetCmdTail())) > 0);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

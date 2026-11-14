@@ -20,7 +20,8 @@ as soon as a maintainer has read it, and credit in the release notes if you want
   downloading from anywhere but this repository's releases.
 - Anything that leaks data from the PC. Zest is meant to make exactly two kinds of network
   request: the update check against this repository, and the public software catalog when the
-  user asks for software updates.
+  user asks for software updates. The [privacy policy](PRIVACY.md) spells both out; anything
+  beyond it is a bug.
 
 ## Supported versions
 

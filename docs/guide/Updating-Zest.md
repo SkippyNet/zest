@@ -26,11 +26,16 @@ Zest only accepts downloads from this repository's release page.
 - **Skip this version** hides the offer until the next release.
 - The automatic daily check can be switched off. You can still check by hand.
 
+The installer asks the same question: untick **Check for new versions of Zest once a day** on its
+options page and Zest never goes online by itself. The [privacy policy](https://github.com/SkippyNet/zest/blob/main/PRIVACY.md),
+which the installer shows, lists everything Zest uses the network for.
+
 From the command line:
 
 ```text
 zest-cli update check
 zest-cli update install
+zest-cli update auto off      stop the daily check (on starts it again)
 ```
 
 ## Updating by hand

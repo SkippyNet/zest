@@ -97,7 +97,7 @@ please [report](https://github.com/SkippyNet/zest/issues) how it went.
 | Command line | Proven | `cli/` | The live test drives everything through it |
 | Scheduled cleaning | Proven | `engine/schedule.rs`, `app/agent.rs` | Task Scheduler accepts the task (CI); the clean it starts runs in the live test |
 | Smart cleaning tray agent | Read-verified | `app/agent.rs`, `engine/smart.rs` | Starts, idles and exits when switched off; its notifications have not been seen by a person |
-| Installer | Proven | `installer/zest.iss` | The release workflow installs, runs and uninstalls it before publishing |
+| Installer | Proven | `installer/zest.iss` | The release workflow installs, runs and uninstalls it before publishing, and checks that the option for the daily update check switches it off and on. The wizard pages (licence, privacy policy, options) have not been clicked through by a person |
 | Zest's own updates | Proven | `updates/selfupdate/` | Live test: a portable copy and an installed copy built with a lower version number update themselves to the latest release (download, checksum, file swap or installer). The "Update now" button in the app has not been clicked by a person |
 | Settings, history, portable mode | Proven | `engine/`, `core/paths.rs` | |
 | App window on machines without a graphics driver | Proven | `app/gpu.rs` | The live test draws every page on a machine with no GPU |
@@ -113,7 +113,10 @@ please [report](https://github.com/SkippyNet/zest/issues) how it went.
   the Windows proxy settings.
 - **Backups** are not encrypted, are not scheduled, and do not keep permissions or alternate data
   streams.
-- **Code signing.** Releases are not signed; they come with checksums and build attestations.
+- **Code signing.** Releases are not signed yet; they come with checksums and build attestations.
+  The release workflow can sign the programs and the installer through a signing service, but
+  that path has never run: it needs an account the project does not have yet. See the
+  [code signing policy](../README.md#code-signing-policy).
 - **Languages.** The interface is English only.
 
 ## Roadmap
