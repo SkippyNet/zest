@@ -8,7 +8,7 @@
 
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-b7410e?logo=rust)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4?logo=windows)](#requirements)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
 </div>
 
@@ -192,4 +192,4 @@ lines in `crates/cleaner/src/catalog/`, and a test checks that no rule can ever 
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)

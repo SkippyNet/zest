@@ -1,0 +1,677 @@
+/* Zest website. Same colours and lettering as the app: orange and leaf
+   green on cool slate, DIN-style headings, the Windows interface face for
+   text. Fonts come from the visitor's system; nothing is downloaded. */
+
+:root {
+  color-scheme: dark;
+  --bg: #1a2028;
+  --rail: #141920;
+  --surface: #222a34;
+  --surface-hi: #2b3541;
+  --well: #13181e;
+  --line: #343f4d;
+  --text: #e9edf2;
+  --muted: #9eabba;
+  --faint: #6f7d8d;
+  --orange: #f7931e;
+  --orange-hi: #ffab45;
+  --orange-lo: #db780c;
+  --on-orange: #261302;
+  --orange-text: #ffa64d;
+  --leaf: #7cc85a;
+  --pith: #fff4de;
+  --flesh-core: #ffd070;
+  --flesh-edge: #ff921e;
+  --rind-shade: #e26a04;
+  --shadow: 0 24px 60px rgba(4, 8, 14, 0.55);
+
+  --display: "Bahnschrift", "DIN Alternate", "DIN Condensed", "Barlow Semi Condensed",
+    "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue",
+    Arial, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+
+  --page: 1120px;
+  --gutter: clamp(16px, 4vw, 40px);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f1f3f5;
+    --rail: #e4e8ec;
+    --surface: #ffffff;
+    --surface-hi: #ecf0f4;
+    --well: #e7ebef;
+    --line: #d0d7df;
+    --text: #1b232d;
+    --muted: #556373;
+    --faint: #8491a0;
+    --orange: #f28a12;
+    --orange-hi: #fba03a;
+    --orange-lo: #d97400;
+    --on-orange: #2a1500;
+    --orange-text: #b05600;
+    --leaf: #3b8c2a;
+    --shadow: 0 24px 60px rgba(27, 35, 45, 0.18);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 76px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.55 var(--body);
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+dt {
+  font-family: var(--display);
+  font-weight: 600;
+  font-stretch: 88%;
+  letter-spacing: 0.005em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--orange-text);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--orange-hi);
+}
+
+@media (prefers-color-scheme: light) {
+  a:hover {
+    color: var(--orange-lo);
+  }
+}
+
+:focus-visible {
+  outline: 2px solid #74acea;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+code {
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.05em 0.35em;
+}
+
+pre {
+  margin: 0;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 1em;
+}
+
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  background: var(--orange);
+  color: var(--on-orange);
+  padding: 8px 14px;
+  border-radius: 6px;
+  z-index: 20;
+}
+
+.skip:focus {
+  top: 12px;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────── */
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px var(--gutter);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  text-decoration: none;
+  font: 600 1.5rem/1 var(--display);
+  font-stretch: 88%;
+}
+
+.brand:hover {
+  color: var(--text);
+}
+
+.top nav {
+  display: flex;
+  gap: clamp(10px, 2.4vw, 26px);
+  font-size: 0.94rem;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.top nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 0;
+}
+
+.top nav a:hover {
+  color: var(--text);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 22px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, var(--text));
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 86%, var(--text));
+}
+
+.button.primary {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: var(--on-orange);
+}
+
+.button.primary:hover {
+  background: var(--orange-hi);
+  border-color: var(--orange-hi);
+  color: var(--on-orange);
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.fineprint {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* ── Hero ────────────────────────────────────────────────────────── */
+
+.hero {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(36px, 7vw, 88px) var(--gutter) clamp(40px, 6vw, 72px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: center;
+}
+
+.hero h1 {
+  font-size: clamp(2.3rem, 5.4vw, 4rem);
+  line-height: 1.04;
+  font-weight: 700;
+  font-stretch: 78%;
+  letter-spacing: -0.005em;
+}
+
+.lede {
+  margin-top: 22px;
+  max-width: 34em;
+  font-size: clamp(1.05rem, 1.6vw, 1.22rem);
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 30px 0 16px;
+}
+
+.slice-wrap {
+  position: relative;
+  display: grid;
+  justify-items: center;
+}
+
+.slice {
+  width: min(100%, 440px);
+  aspect-ratio: 1;
+}
+
+.slice svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.35));
+}
+
+.slice noscript img {
+  width: 100%;
+  height: auto;
+}
+
+.seg {
+  cursor: pointer;
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  outline: none;
+}
+
+.seg .flesh {
+  transition: filter 0.2s;
+}
+
+.seg:hover .flesh,
+.seg:focus-visible .flesh {
+  filter: brightness(1.08);
+}
+
+.seg:focus-visible .rind {
+  stroke: #74acea;
+  stroke-width: 2.5;
+}
+
+.segment-card {
+  width: min(100%, 400px);
+  margin-top: 6px;
+  padding: 16px 18px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--orange);
+  border-radius: 10px;
+  min-height: 7.6em;
+}
+
+.segment-card h2 {
+  font-size: 1.3rem;
+}
+
+.segment-card p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+
+/* ── Bands ───────────────────────────────────────────────────────── */
+
+.band {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: clamp(44px, 7vw, 84px) var(--gutter);
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.band-head {
+  max-width: 40em;
+  margin-bottom: clamp(24px, 4vw, 40px);
+}
+
+.band h2 {
+  font-size: clamp(1.9rem, 3.6vw, 2.7rem);
+  line-height: 1.08;
+}
+
+.band-head p,
+.split > div p {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 1.08rem;
+}
+
+/* The eight segments, as a spec sheet. */
+
+.segments {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: clamp(24px, 5vw, 72px);
+}
+
+.segments > div {
+  display: grid;
+  grid-template-columns: 7.2rem minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+  cursor: default;
+}
+
+.segments dt {
+  font-size: 1.28rem;
+  color: var(--text);
+  position: relative;
+  padding-left: 16px;
+}
+
+.segments dt::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.42em;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--line);
+  transition: background-color 0.2s;
+}
+
+.segments > div.active dt::before {
+  background: var(--orange);
+}
+
+.segments dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
+/* Screenshot viewer. */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: 10px 14px;
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: 0.96rem;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--text);
+}
+
+.tabs button[aria-selected="true"] {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--orange);
+}
+
+.window {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--rail);
+  box-shadow: var(--shadow);
+}
+
+.window img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The four steps of a clean: a real sequence, so it is numbered. */
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(16px, 2.6vw, 30px);
+  counter-reset: step;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-top: 18px;
+  border-top: 3px solid var(--line);
+}
+
+.steps li:last-child {
+  border-top-color: var(--leaf);
+}
+
+.steps li::before {
+  content: counter(step);
+  display: block;
+  font: 700 2.6rem/1 var(--display);
+  font-stretch: 80%;
+  color: var(--orange-text);
+  margin-bottom: 6px;
+}
+
+.steps li:last-child::before {
+  color: var(--leaf);
+}
+
+.steps h3 {
+  font-size: 1.3rem;
+}
+
+.steps p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+
+/* Trust: heading left, facts right. */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: start;
+}
+
+.facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.facts li {
+  padding: 15px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.facts li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.facts strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Download. */
+
+.downloads {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1.15fr;
+  gap: 16px;
+}
+
+.download {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.download.main {
+  border-color: color-mix(in srgb, var(--orange) 55%, var(--line));
+}
+
+.download h3 {
+  font-size: 1.4rem;
+}
+
+.download p {
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+
+.download .button {
+  margin-top: auto;
+}
+
+.note {
+  margin-top: 22px;
+  max-width: 62em;
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────── */
+
+.foot {
+  border-top: 1px solid var(--line);
+  background: var(--rail);
+  padding: 36px var(--gutter) 44px;
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+}
+
+.foot nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 24px;
+  font-size: 0.95rem;
+}
+
+.foot p {
+  max-width: 46em;
+  color: var(--faint);
+  font-size: 0.86rem;
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .slice {
+    width: min(84%, 380px);
+  }
+
+  .segments {
+    grid-template-columns: 1fr;
+  }
+
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .split,
+  .downloads {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    font-size: 16px;
+  }
+
+  .top nav a:nth-child(3) {
+    display: none;
+  }
+
+  .segments > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .steps {
+    grid-template-columns: 1fr;
+  }
+
+  .actions .button {
+    flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .seg,
+  .button {
+    transition: none;
+  }
+}

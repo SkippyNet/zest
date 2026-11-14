@@ -1,0 +1,79 @@
+name: Something went wrong
+description: A crash, a wrong result, or something that was removed or changed and should not have been.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If Zest removed or changed something it should not have,
+        say so in the first line: those reports are looked at first.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what Zest did instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in Zest?
+      options:
+        - Health check
+        - Custom clean
+        - Registry
+        - Windows privacy
+        - Startup
+        - Performance
+        - Uninstall
+        - Software updates
+        - Drivers
+        - Browser extensions
+        - Disk analyzer
+        - Duplicate finder
+        - Empty folders
+        - Drive wiper
+        - Backup
+        - System restore
+        - System info
+        - Windows tools
+        - Options or updating Zest itself
+        - Command line (zest-cli)
+        - Installer
+        - Somewhere else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Zest version
+      description: Options → About, or `zest-cli --version`.
+      placeholder: "0.9.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Press Win+R, type `winver`.
+      placeholder: "Windows 11 24H2 (build 26100)"
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: How do you run Zest?
+      options:
+        - Installed with the installer
+        - Portable zip
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Options → About → Open data folder → `logs\zest.log`. Paste the lines around the time of the problem.
+        Logs contain file paths, which can include your Windows user name: remove anything you want to keep private.
+      render: text

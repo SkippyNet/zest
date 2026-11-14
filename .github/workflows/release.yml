@@ -1,0 +1,152 @@
+name: Release
+
+# Pushing a tag like v1.2.3 builds the installer and the portable zip on a
+# clean GitHub runner and publishes them as a release. Nothing is built on a
+# developer's machine, and every file gets a checksum and a build attestation.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a release (off = build and keep the files as a workflow artifact)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # The compiler everyone builds with. Raise it here and in Cargo.toml (rust-version) together.
+  RUST_VERSION: "1.92.0"
+
+jobs:
+  build:
+    name: Build installer and portable zip
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal --component rustfmt,clippy --no-self-update
+          rustup default $env:RUST_VERSION
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      - name: Read the version
+        id: version
+        shell: pwsh
+        run: |
+          $meta = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = ($meta.packages | Where-Object { $_.name -eq 'zest' }).version
+          if (-not $version) { throw "could not read the version of the zest package" }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "tag $env:GITHUB_REF_NAME does not match the version in Cargo.toml ($version)"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building Zest $version"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          # Keep the runner's folder layout out of the binaries.
+          $env:RUSTFLAGS = "--remap-path-prefix=$env:GITHUB_WORKSPACE=. --remap-path-prefix=$env:USERPROFILE\.cargo=cargo"
+          cargo build --release --locked -p zest -p zest-cli
+
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force dist, dist\portable | Out-Null
+          Copy-Item target\release\zest.exe, target\release\zest-cli.exe, LICENSE, NOTICE dist\portable
+          Copy-Item installer\README.txt dist\portable\README.txt
+          # This marker keeps settings and history beside the executable.
+          New-Item -ItemType File dist\portable\zest.portable | Out-Null
+          Compress-Archive -Path dist\portable\* -DestinationPath "dist\Zest-$v-x64-portable.zip" -CompressionLevel Optimal
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $iscc)) {
+              choco install innosetup --no-progress -y
+            }
+          }
+          & $iscc "/DAppVersion=$v" installer\zest.iss
+          if ($LASTEXITCODE -ne 0) { throw "the installer did not compile" }
+
+      - name: Try the installer on this runner
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $setup = (Resolve-Path "dist\Zest-$v-x64-setup.exe").Path
+          $target = "$env:RUNNER_TEMP\zest-install"
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/NOLAUNCH',"/DIR=$target" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+          foreach ($f in 'zest.exe','zest-cli.exe','unins000.exe') {
+            if (-not (Test-Path "$target\$f")) { throw "$f was not installed" }
+          }
+          $reported = & "$target\zest-cli.exe" --version
+          Write-Host $reported
+          if ($reported -notmatch [regex]::Escape($v)) { throw "installed CLI reports '$reported', expected $v" }
+          $u = Start-Process "$target\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "uninstaller exited with $($u.ExitCode)" }
+          Start-Sleep -Seconds 3
+          if (Test-Path "$target\zest.exe") { throw "uninstall left zest.exe behind" }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Set-Location dist
+          Get-ChildItem -File -Filter 'Zest-*' | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
+      - name: Release notes
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $log = Get-Content CHANGELOG.md -Raw
+          $pattern = "(?ms)^## \[?$([regex]::Escape($v))\]?[^\n]*\n(.*?)(?=^## |\z)"
+          $m = [regex]::Match($log, $pattern)
+          $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "See CHANGELOG.md for details." }
+          $footer = (Get-Content installer\release-footer.md -Raw).Replace('{version}', $v).Replace('{repo}', $env:GITHUB_REPOSITORY)
+          ($notes + "`n`n" + $footer) | Set-Content -Encoding utf8 dist\notes.md
+
+      - name: Attest build provenance
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/Zest-*-x64-setup.exe
+            dist/Zest-*-x64-portable.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zest-${{ steps.version.outputs.version }}
+          path: |
+            dist/Zest-*
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish the release
+        if: ${{ github.ref_type == 'tag' || inputs.publish }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $files = @(Get-ChildItem dist -File -Filter 'Zest-*' | ForEach-Object FullName) + (Resolve-Path dist\SHA256SUMS.txt).Path
+          gh release create "v$v" @files --title "Zest $v" --notes-file dist\notes.md

@@ -1,26 +1,43 @@
 name: CI
 
-# Runs on pull requests and on demand. Add `push:` here once the repository
-# is public (public repositories do not use up Actions minutes).
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "site/**"
+      - "docs/**"
+      - "**.md"
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # The compiler everyone builds with. Raise it here and in Cargo.toml (rust-version) together.
+  RUST_VERSION: "1.92.0"
 
 jobs:
   check:
+    name: Format, lint and test
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal --component rustfmt,clippy --no-self-update
+          rustup default $env:RUST_VERSION
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
