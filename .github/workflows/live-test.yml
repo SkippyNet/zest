@@ -48,3 +48,15 @@ jobs:
           name: live-test-${{ matrix.os }}
           path: live-test-output
           if-no-files-found: warn
+
+  self-update:
+    name: Update from the previous release
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Let a copy of the previous release update itself
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/self-update-test.ps1
