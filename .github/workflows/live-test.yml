@@ -49,14 +49,32 @@ jobs:
           path: live-test-output
           if-no-files-found: warn
 
+  # A release's files only exist once its release workflow has finished, so
+  # this job is started by hand after a release (and by the weekly schedule),
+  # not by the tag itself.
   self-update:
-    name: Update from the previous release
+    name: Update to the latest release
+    if: github.event_name != 'push'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Let a copy of the previous release update itself
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal --no-self-update
+          rustup default $env:RUST_VERSION
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Build a copy that believes it is version 0.0.1
+        shell: pwsh
+        run: |
+          $toml = Get-Content Cargo.toml -Raw
+          $toml = $toml -replace '(?m)^version = "[0-9]+[.][0-9]+[.][0-9]+"', 'version = "0.0.1"'
+          Set-Content Cargo.toml $toml -NoNewline
+          cargo build --release -p zest -p zest-cli
+      - name: Let it update itself to the latest release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/self-update-test.ps1
+        run: ./scripts/self-update-test.ps1 -OldBuild target/release
