@@ -17,7 +17,7 @@ It shows you everything before it removes anything.
 [![Issues](https://img.shields.io/github/issues/SkippyNet/zest?color=74acea)](https://github.com/SkippyNet/zest/issues)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-b7410e?logo=rust)](https://www.rust-lang.org/)
 
-### [Download](https://github.com/SkippyNet/zest/releases/latest) &nbsp;·&nbsp; [Website](https://skippynet.github.io/zest/) &nbsp;·&nbsp; [Guide](https://github.com/SkippyNet/zest/wiki) &nbsp;·&nbsp; [Report a problem](https://github.com/SkippyNet/zest/issues/new/choose)
+### [Download](https://github.com/SkippyNet/zest/releases/latest) &nbsp;·&nbsp; [Website](https://skippynet.github.io/zest/) &nbsp;·&nbsp; [Guide](docs/guide/Home.md) &nbsp;·&nbsp; [Report a problem](https://github.com/SkippyNet/zest/issues/new/choose)
 
 </div>
 
@@ -125,7 +125,7 @@ Windows 10 (1809 or later) or Windows 11, 64-bit.
 5. **It keeps to itself.** No telemetry, no ads, no account. It goes online for its own update
    check and for the software catalog when you ask for updates; both can be switched off.
 
-More in the [safety guide](https://github.com/SkippyNet/zest/wiki/Safety).
+More in the [safety guide](docs/guide/Safety.md).
 
 ## How updates work
 
@@ -160,7 +160,7 @@ zest-cli update check              is there a newer Zest?
 ```
 
 Add `--json` to any command for machine-readable output. Full reference in the
-[guide](https://github.com/SkippyNet/zest/wiki/Command-line).
+[guide](docs/guide/Command-line.md).
 
 ## Project status
 

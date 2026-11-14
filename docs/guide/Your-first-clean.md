@@ -54,4 +54,4 @@ the browser and analyze again.
 
 *Options → About* shows your clean history: when, how much, and from which areas.
 
-Want this to happen by itself? See [Options and automation](Options-and-automation).
+Want this to happen by itself? See [Options and automation](Options-and-automation.md).

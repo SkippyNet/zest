@@ -3,22 +3,22 @@
 Zest is a free, open-source cleaner and optimizer for Windows 10 and 11. This guide explains how
 to install it, what each tool does, and what it will and will not touch.
 
-**New here?** Read [Installing](Installing) and then [Your first clean](Your-first-clean). That is
+**New here?** Read [Installing](Installing.md) and then [Your first clean](Your-first-clean.md). That is
 ten minutes, and it covers the part most people use.
 
 ## The tools
 
 | Group | What is in it | Guide |
 |---|---|---|
-| **Clean** | Health check, Custom clean, Registry, Windows privacy | [Clean](Clean) |
-| **Speed** | Startup, Performance | [Speed](Speed) |
-| **Software** | Uninstall, Software updates, Drivers, Browser extensions | [Software](Software) |
-| **Storage** | Disk analyzer, Duplicate finder, Empty folders, Drive wiper | [Storage](Storage) |
-| **Protect** | Backup, System restore | [Protect](Protect) |
-| **System** | System info, Windows tools | [System](System) |
+| **Clean** | Health check, Custom clean, Registry, Windows privacy | [Clean](Clean.md) |
+| **Speed** | Startup, Performance | [Speed](Speed.md) |
+| **Software** | Uninstall, Software updates, Drivers, Browser extensions | [Software](Software.md) |
+| **Storage** | Disk analyzer, Duplicate finder, Empty folders, Drive wiper | [Storage](Storage.md) |
+| **Protect** | Backup, System restore | [Protect](Protect.md) |
+| **System** | System info, Windows tools | [System](System.md) |
 
-Also: [Options and automation](Options-and-automation) · [Command line](Command-line) ·
-[Updating Zest](Updating-Zest) · [Safety](Safety) · [Questions and answers](FAQ)
+Also: [Options and automation](Options-and-automation.md) · [Command line](Command-line.md) ·
+[Updating Zest](Updating-Zest.md) · [Safety](Safety.md) · [Questions and answers](FAQ.md)
 
 ## Three things to know first
 

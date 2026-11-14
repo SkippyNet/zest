@@ -39,7 +39,7 @@ Good to know:
 - Backups are not encrypted. Put them on a drive you control.
 
 From the command line: `zest-cli backup create | list | restore | verify`
-(see [Command line](Command-line)).
+(see [Command line](Command-line.md)).
 
 ### System image
 

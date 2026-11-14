@@ -59,6 +59,6 @@ switch off.
 
 ## About
 
-Version, the update check for Zest itself (see [Updating Zest](Updating-Zest)), your clean
+Version, the update check for Zest itself (see [Updating Zest](Updating-Zest.md)), your clean
 history, and **Open data folder**, which is where settings, history, registry backups and the log
 live.

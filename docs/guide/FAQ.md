@@ -9,7 +9,7 @@ Yes. No paid tier, no trial, no ads, no bundled software. The code is public und
 
 Zest shows you what it will remove before it removes anything, refuses to touch Windows and your
 personal folders, and backs up the registry before changing it. The details are on the
-[Safety](Safety) page. It is also a young program: the
+[Safety](Safety.md) page. It is also a young program: the
 [feature plan](https://github.com/SkippyNet/zest/blob/main/docs/FEATURES.md) says which features
 have been verified on real PCs and which have only been tested on sandboxed data. Start with
 **Analyze** and read the list.
@@ -17,7 +17,7 @@ have been verified on real PCs and which have only been tested on sandboxed data
 ### Windows says "Windows protected your PC" when I run the download.
 
 That is SmartScreen reacting to a file that is new and not code-signed. See
-[Installing](Installing#windows-protected-your-pc) for how to continue and how to verify the file.
+[Installing](Installing.md#windows-protected-your-pc) for how to continue and how to verify the file.
 
 ### Will cleaning sign me out of websites?
 
@@ -38,7 +38,7 @@ of Windows 10 and 11 and has a public catalog of many thousands of programs main
 Microsoft and the publishers. Whatever you have installed is matched against that catalog on your
 PC. On a PC without Windows Package Manager, Zest reads the same public catalog directly to tell
 you what is out of date, and offers to install Windows Package Manager so it can do the updating.
-More on the [Software](Software#software-updates) page.
+More on the [Software](Software.md#software-updates) page.
 
 ### And drivers?
 
@@ -60,7 +60,7 @@ Otherwise nothing of Zest runs when its window is closed.
 
 One request a day to GitHub asking for the newest Zest version (can be switched off), and catalog
 lookups when you ask for software updates. No telemetry, no account. See
-[Safety](Safety#what-zest-sends-over-the-network).
+[Safety](Safety.md#what-zest-sends-over-the-network).
 
 ### Something was removed that I wanted to keep.
 
@@ -73,7 +73,7 @@ lookups when you ask for software updates. No telemetry, no account. See
 
 ### Can I use it from a script?
 
-Yes: [Command line](Command-line).
+Yes: [Command line](Command-line.md).
 
 ### How do I remove Zest completely?
 

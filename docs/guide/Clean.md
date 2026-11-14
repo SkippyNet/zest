@@ -2,7 +2,7 @@
 
 ## Health check and Custom clean
 
-Covered step by step in [Your first clean](Your-first-clean).
+Covered step by step in [Your first clean](Your-first-clean.md).
 
 The rules behind Custom clean come in four sections:
 

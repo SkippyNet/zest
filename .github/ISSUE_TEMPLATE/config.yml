@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/SkippyNet/zest/security/advisories/new
     about: Please report vulnerabilities privately, not in a public issue.
   - name: How do I ...?
-    url: https://github.com/SkippyNet/zest/wiki
+    url: https://github.com/SkippyNet/zest/blob/main/docs/guide/Home.md
     about: The guide covers installing, each tool, the command line and common questions.
