@@ -176,11 +176,11 @@ mod tests {
             "corners are transparent"
         );
 
-        // The middle of a segment on the lower left is solid orange flesh.
+        // Straight down from the centre is the middle of a segment: orange flesh.
         let geometry = Geometry::for_size(s);
         let (cx, cy) = geometry.centre;
         let reach = geometry.radius * 0.5;
-        let flesh = pixel(&pixels, size, cx - reach * 0.38, cy + reach * 0.92);
+        let flesh = pixel(&pixels, size, cx, cy + reach);
         assert_eq!(flesh[3], 255, "the flesh is opaque");
         assert!(
             flesh[0] > 230 && flesh[1] > 120 && flesh[2] < 140,
@@ -219,18 +219,30 @@ mod tests {
     }
 
     #[test]
-    fn every_icon_size_stays_inside_its_square() {
+    fn every_icon_size_fits_inside_its_square() {
         for size in [16u32, 20, 24, 32, 48, 256] {
+            let s = size as f32;
+            let g = Geometry::for_size(s);
+            let (cx, cy) = g.centre;
+            // The slice itself.
+            assert!(cx - g.radius >= 0.0 && cx + g.radius <= s, "size {size}");
+            assert!(cy - g.radius >= 0.0 && cy + g.radius <= s, "size {size}");
+            // The far corners of the loose segment.
+            let (sin, cos) = LOOSE_DIRECTION.to_radians().sin_cos();
+            let (ox, oy) = (cx + cos * g.pull, cy + sin * g.pull);
+            for edge in [-SEGMENT_SPAN / 2.0, 0.0, SEGMENT_SPAN / 2.0] {
+                let (sin, cos) = (LOOSE_DIRECTION + edge).to_radians().sin_cos();
+                let (x, y) = (ox + cos * g.radius, oy + sin * g.radius);
+                assert!(
+                    (0.0..=s).contains(&x) && (0.0..=s).contains(&y),
+                    "size {size}: the loose segment is cut off at ({x}, {y})"
+                );
+            }
+            // And the pixels agree: the four corner pixels stay empty.
             let pixels = render(size);
-            let edge_alpha: u32 = (0..size)
-                .map(|i| {
-                    u32::from(pixels[(i * 4 + 3) as usize])
-                        + u32::from(pixels[(((size - 1) * size + i) * 4 + 3) as usize])
-                        + u32::from(pixels[((i * size) * 4 + 3) as usize])
-                        + u32::from(pixels[((i * size + size - 1) * 4 + 3) as usize])
-                })
-                .sum();
-            assert_eq!(edge_alpha, 0, "size {size} touches the edge of its square");
+            for (x, y) in [(0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1)] {
+                assert_eq!(pixels[((y * size + x) * 4 + 3) as usize], 0, "size {size}");
+            }
         }
     }
 }

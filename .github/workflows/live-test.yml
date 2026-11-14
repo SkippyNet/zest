@@ -1,0 +1,50 @@
+name: Live test
+
+# Runs Zest for real on a throw-away Windows machine: plants junk, cleans it,
+# changes and restores settings, and checks the results. This is where the
+# features that unit tests cannot reach (real cleaning, administrator-only
+# tools, the app window) are exercised.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_VERSION: "1.92.0"
+
+jobs:
+  live:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal --no-self-update
+          rustup default $env:RUST_VERSION
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Build
+        run: cargo build --release --locked -p zest -p zest-cli
+      - name: Run Zest for real on this machine
+        shell: pwsh
+        run: ./scripts/live-test.ps1 -Bin target\release -Out live-test-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-test-${{ matrix.os }}
+          path: live-test-output
+          if-no-files-found: warn
