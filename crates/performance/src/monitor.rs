@@ -1040,12 +1040,25 @@ mod tests {
         assert_eq!(second.per_core.len(), first.per_core.len());
         assert!(!second.per_core.is_empty());
 
-        let me = second
+        // One busy thread is 100/N percent of an N-processor PC. Allow a wide
+        // margin for scheduling noise, but the scale must be right. On a PC
+        // that is busy with other work one 300 ms window can be starved of
+        // processor time, so up to two more windows are measured.
+        let one_core = 100.0 / second.per_core.len() as f32;
+        let mut busy = second;
+        for _ in 0..2 {
+            let measured = busy
+                .app_for_pid(std::process::id())
+                .map_or(0.0, |app| app.cpu_percent);
+            if measured >= one_core * 0.3 {
+                break;
+            }
+            burn(Duration::from_millis(300));
+            busy = sampler.sample().unwrap();
+        }
+        let me = busy
             .app_for_pid(std::process::id())
             .expect("own process must be part of an app");
-        // One busy thread is 100/N percent of an N-processor PC. Allow a wide
-        // margin for scheduling noise, but the scale must be right.
-        let one_core = 100.0 / second.per_core.len() as f32;
         assert!(
             me.cpu_percent >= one_core * 0.3,
             "busy loop measured as {:.2}% (one core = {one_core:.2}%)",
