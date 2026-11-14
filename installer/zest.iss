@@ -63,7 +63,8 @@ Name: "{autodesktop}\Zest"; Filename: "{app}\zest.exe"; Tasks: desktopicon
 Filename: "{app}\zest.exe"; Description: "{cm:LaunchProgram,Zest}"; Flags: nowait postinstall skipifsilent
 ; After a silent install (that is how Zest updates itself): start it again.
 ; The agent exits by itself when smart cleaning is switched off.
-Filename: "{app}\zest.exe"; Flags: nowait; Check: ShouldRelaunch
+; "--restarted" tells the new copy to wait for the old window to finish closing.
+Filename: "{app}\zest.exe"; Parameters: "--restarted"; Flags: nowait; Check: ShouldRelaunch
 Filename: "{app}\zest.exe"; Parameters: "--agent"; Flags: nowait; Check: ShouldRelaunch
 
 [UninstallRun]

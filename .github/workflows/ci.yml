@@ -41,3 +41,5 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --locked --no-fail-fast
+      - name: Test against the real Task Scheduler
+        run: cargo test --workspace --locked -- --ignored task_scheduler_round_trip

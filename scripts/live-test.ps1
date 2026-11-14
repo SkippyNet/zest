@@ -174,9 +174,109 @@ Check "disk analyzer measures a folder" { $disk.Code -eq 0 }
 $bad = Zest disk analyze "Z:\no\such\folder"
 Check "a missing folder is an error, not a crash" { $bad.Code -eq 1 }
 
-# ── Later sections are added by the features that have a command for them ──
-$extra = Join-Path $PSScriptRoot "live-test-extra.ps1"
-if (Test-Path $extra) { . $extra }
+$system = Zest system --json
+Check "system info reads the hardware" { $system.Code -eq 0 -and $system.Text -match 'processor' }
+$update = Zest update check
+Check "update check answers (no crash)" { $update.Code -eq 0 }
+
+# ── A scheduled clean, the way Task Scheduler starts it ───────────────
+Section "Scheduled clean"
+$scheduled = Join-Path $env:TEMP "zest-live-scheduled.tmp"
+[IO.File]::WriteAllBytes($scheduled, (New-Object byte[] (128KB)))
+(Get-Item $scheduled).LastWriteTime = $old
+$run = Start-Process $gui -ArgumentList "--scheduled-clean" -PassThru
+if (-not $run.WaitForExit(300000)) { $run.Kill() }
+Check "the scheduled clean runs to the end" { $run.HasExited -and $run.ExitCode -eq 0 }
+Check "the scheduled clean removed the junk" { -not (Test-Path $scheduled) }
+Check "the scheduled clean left the document alone" { Test-Path $keepDoc }
+
+# ── Registry cleaner: plant, fix, restore from the backup ─────────────
+Section "Registry"
+$runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$appPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\zestlive.exe"
+New-Item -Path $runKey -Force | Out-Null
+Set-ItemProperty -Path $runKey -Name "ZestLiveMissing" -Value '"C:\zest-live-missing\gone.exe" --tray'
+New-Item -Path $appPath -Force | Out-Null
+Set-ItemProperty -Path $appPath -Name "(default)" -Value 'C:\zest-live-missing\zestlive.exe'
+# A healthy entry next to them that must survive.
+Set-ItemProperty -Path $runKey -Name "ZestLiveHealthy" -Value "$env:WINDIR\System32\notepad.exe"
+
+$scan = Zest registry scan --json
+Check "registry scan finds the planted dead entries" { $scan.Code -eq 0 -and $scan.Text -match 'ZestLiveMissing' -and $scan.Text -match 'zestlive\.exe' }
+Check "registry scan does not flag the healthy entry" { $scan.Text -notmatch 'ZestLiveHealthy' }
+$fix = Zest registry fix --yes --json
+Check "registry fix succeeds" { $fix.Code -eq 0 }
+$fixed = Json $fix.Text
+Check "registry fix removed entries" { $fixed.fixed -ge 2 }
+Check "the dead startup entry is gone" { -not (Get-ItemProperty -Path $runKey -Name "ZestLiveMissing" -ErrorAction SilentlyContinue) }
+Check "the dead App Paths key is gone" { -not (Test-Path $appPath) }
+Check "the healthy startup entry is still there" { [bool](Get-ItemProperty -Path $runKey -Name "ZestLiveHealthy" -ErrorAction SilentlyContinue) }
+Check "a .reg backup was written" { $fixed.backup_file -and (Test-Path $fixed.backup_file) }
+if ($fixed.backup_file -and (Test-Path $fixed.backup_file)) {
+    $import = Start-Process reg.exe -ArgumentList "import", "`"$($fixed.backup_file)`"" -Wait -PassThru -WindowStyle Hidden
+    Check "the backup imports cleanly" { $import.ExitCode -eq 0 }
+    Check "importing the backup brings the entries back" { [bool](Get-ItemProperty -Path $runKey -Name "ZestLiveMissing" -ErrorAction SilentlyContinue) -and (Test-Path $appPath) }
+}
+Remove-ItemProperty -Path $runKey -Name "ZestLiveMissing", "ZestLiveHealthy" -ErrorAction SilentlyContinue
+Remove-Item -Path $appPath -Recurse -ErrorAction SilentlyContinue
+
+# ── Windows privacy: apply, read back, revert ─────────────────────────
+Section "Windows privacy"
+$before = Zest privacy list --json
+Check "privacy list runs" { $before.Code -eq 0 -and (Json $before.Text).Count -ge 20 }
+$apply = Zest privacy apply --recommended --yes --json
+Check "privacy apply succeeds" { $apply.Code -eq 0 }
+$applied = Json $apply.Text
+$changed = @($applied.items | Where-Object { $_.outcome -eq "Changed" }).Count
+Check "privacy apply changed settings" { $changed -ge 3 }
+Check "privacy apply wrote a backup" { $applied.backup -and (Test-Path $applied.backup) }
+$after = Json (Zest privacy list --json).Text
+$private = @($after | Where-Object { $_.state -eq "Private" }).Count
+Check "the applied settings read back as private" { $private -ge $changed }
+$revert = Zest privacy revert --all --yes --json
+Check "privacy revert succeeds" { $revert.Code -eq 0 }
+$reverted = Json (Zest privacy list --json).Text
+Check "after reverting, nothing is left private or custom" { @($reverted | Where-Object { $_.state -in "Private", "Custom" }).Count -eq 0 }
+
+# ── Windows tools ─────────────────────────────────────────────────────
+Section "Windows tools"
+$tools = Zest tools list --json
+Check "tools list runs" { $tools.Code -eq 0 -and (Json $tools.Text).Count -ge 15 }
+$dns = Zest tools run dns-flush --yes
+Check "a tool runs and reports (flush DNS)" { $dns.Code -eq 0 }
+if ($elevated) {
+    $image = Zest tools run image-check --yes
+    Check "an administrator tool runs and reports (component store check)" { $image.Code -eq 0 -and $image.Text -match '\S' }
+}
+$window = Zest tools run services --yes
+Check "a tool that opens a window is refused on the command line" { $window.Code -eq 1 }
+
+# ── Backup: create, change, create again, verify, restore ─────────────
+Section "Backup"
+$source = Join-Path $Out "backup-source"
+$dest = Join-Path $Out "backup-dest"
+$restored = Join-Path $Out "backup-restored"
+New-Item -ItemType Directory -Force "$source\letters", $dest | Out-Null
+Set-Content "$source\notes.txt" "first version"
+Set-Content "$source\letters\one.txt" "a letter"
+$big = New-Object byte[] (9MB); (New-Object Random 11).NextBytes($big)
+[IO.File]::WriteAllBytes("$source\big.bin", $big)
+$first = Zest backup create $source --dest $dest --label first
+Check "backup create succeeds" { $first.Code -eq 0 }
+Set-Content "$source\notes.txt" "second version"
+$second = Zest backup create $source --dest $dest --label second
+Check "a second backup succeeds" { $second.Code -eq 0 }
+$list = Zest backup list --dest $dest --json
+Check "backup list shows both backups" { $list.Code -eq 0 -and $list.Text -match 'first' -and $list.Text -match 'second' }
+$verify = Zest backup verify --dest $dest
+Check "backup verify finds the data intact" { $verify.Code -eq 0 }
+$restore = Zest backup restore --dest $dest --to $restored
+Check "backup restore succeeds" { $restore.Code -eq 0 }
+$notes = Get-ChildItem $restored -Recurse -Filter notes.txt | Select-Object -First 1
+$bigBack = Get-ChildItem $restored -Recurse -Filter big.bin | Select-Object -First 1
+Check "the newest version of a changed file comes back" { $notes -and (Get-Content $notes.FullName) -eq "second version" }
+Check "a large file comes back byte for byte" { $bigBack -and (Get-FileHash $bigBack.FullName).Hash -eq (Get-FileHash "$source\big.bin").Hash }
+Check "a sub-folder comes back" { [bool](Get-ChildItem $restored -Recurse -Filter one.txt) }
 
 # ── The window ────────────────────────────────────────────────────────
 Section "Application window"
@@ -203,3 +303,6 @@ if ($env:GITHUB_STEP_SUMMARY) { $lines | Add-Content $env:GITHUB_STEP_SUMMARY -E
 
 Remove-Item $keepDoc, $keepProfile, $fresh -ErrorAction SilentlyContinue
 if ($failed.Count -gt 0) { exit 1 }
+
+# The checks decide the result, not the exit code of the last command that ran.
+exit 0
