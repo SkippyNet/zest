@@ -17,6 +17,12 @@ use std::time::{Duration, Instant};
 use zest_engine::Settings;
 use zest_engine::core::{brand, elevation};
 
+/// Height kept free at the bottom of the navigation rail for what never
+/// scrolls: Options and the version line.
+const RAIL_FOOT: f32 = 96.0;
+/// Space between the update offer in the rail and Options below it.
+const RAIL_OFFER_GAP: f32 = 4.0;
+
 /// Options decided on the command line.
 #[derive(Clone, Debug, Default)]
 pub struct Launch {
@@ -209,10 +215,20 @@ impl App {
         });
         ui.add_space(14.0);
 
+        // A newer version of the app itself, offered until it is installed
+        // or skipped. Its row sits above Options, so the list of pages has
+        // to leave room for it.
+        let offer = self.updater.offer(&self.settings);
+        let below_list = if offer.is_some() {
+            RAIL_FOOT + widgets::NAV_ITEM_HEIGHT + RAIL_OFFER_GAP
+        } else {
+            RAIL_FOOT
+        };
+
         let mut goto = None;
         ScrollArea::vertical()
             .auto_shrink([false, false])
-            .max_height(ui.available_height() - 96.0)
+            .max_height((ui.available_height() - below_list).max(widgets::NAV_ITEM_HEIGHT))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 1.0;
                 // The rail holds more entries than fit a small window, so it
@@ -277,20 +293,17 @@ impl App {
             ) {
                 goto = Some(Page::Options);
             }
-            // A newer version of the app itself, offered until it is
-            // installed or skipped.
-            if let Some(version) = self.updater.offer(&self.settings)
-                && widgets::nav_item(
+            if let Some(version) = &offer {
+                ui.add_space(RAIL_OFFER_GAP);
+                if widgets::nav_callout(
                     ui,
                     &pal,
                     icon::ARROW_CIRCLE_UP,
                     &format!("Update to {version}"),
-                    false,
-                    None,
-                )
-            {
-                goto = Some(Page::Options);
-                open_about = true;
+                ) {
+                    goto = Some(Page::Options);
+                    open_about = true;
+                }
             }
         });
         if open_about {

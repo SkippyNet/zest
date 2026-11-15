@@ -1118,6 +1118,45 @@ pub fn nav_item(
     response.on_hover_cursor(CursorIcon::PointingHand).clicked()
 }
 
+/// A rail entry that asks for attention (a new version of the app): the same
+/// size as [`nav_item`], but always filled, so that it reads as a button and
+/// not as one more page. Returns true when clicked.
+pub fn nav_callout(ui: &mut Ui, pal: &Palette, glyph: &str, label: &str) -> bool {
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), NAV_ITEM_HEIGHT), Sense::click());
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    if ui.is_rect_visible(rect) {
+        let radius = CornerRadius::same(RADIUS);
+        let tint = if response.hovered() { 0.26 } else { 0.16 };
+        ui.painter()
+            .rect_filled(rect, radius, mix(pal.rail, pal.accent, tint));
+        if response.has_focus() {
+            ui.painter()
+                .rect_stroke(rect, radius, Stroke::new(2.0, pal.info), StrokeKind::Inside);
+        }
+        ui.painter().text(
+            pos2(rect.left() + 24.0, rect.center().y),
+            Align2::CENTER_CENTER,
+            glyph,
+            text::body_font(18.0),
+            pal.accent_text,
+        );
+        let label_rect = Rect::from_min_max(
+            pos2(rect.left() + 44.0, rect.top()),
+            pos2(rect.right() - 8.0, rect.bottom()),
+        );
+        paint_text(
+            ui,
+            label_rect,
+            label,
+            text::semibold_font(14.0),
+            pal.text,
+            Align::Min,
+        );
+    }
+    response.on_hover_cursor(CursorIcon::PointingHand).clicked()
+}
+
 // ── Lists ────────────────────────────────────────────────────────────
 
 /// Width of one column of a [`Columns`] layout.
