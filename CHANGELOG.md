@@ -2,6 +2,12 @@
 
 Notable changes in each release. Versions follow [semantic versioning](https://semver.org/).
 
+## 0.9.2
+
+- Fixed: when a new version was on offer, its **Update to …** entry in the sidebar was drawn over the last pages in the list. It now has its own space above Options and is a filled button.
+
+If you update from 0.9.0 or 0.9.1 you will see the old overlapping entry one last time; it still works.
+
 ## 0.9.1
 
 Groundwork for code-signed releases. Nothing about cleaning has changed.
